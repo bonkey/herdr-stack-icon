@@ -1,0 +1,46 @@
+id = "bonkey.stack-icon"
+name = "Stack icon"
+version = "0.1.0"
+min_herdr_version = "0.8.0"
+description = "Shows a technology icon (🍏 🤖 🦀 🐹 🟩 🐍) next to each workspace, detected from the repository's files."
+platforms = ["macos", "linux"]
+
+# Render it in config.toml by adding { token = "$stack" } to a row of both
+# [ui.sidebar.spaces] and [ui.sidebar.agents], for example:
+#   rows = [["state_icon", { token = "$stack" }, "workspace"], ...]
+
+# Commands run with the plugin root as cwd, so the script is addressed by name.
+
+# New and reopened worktrees.
+[[events]]
+on = "worktree.created"
+command = ["bash", "stack-icon.sh"]
+
+[[events]]
+on = "worktree.opened"
+command = ["bash", "stack-icon.sh"]
+
+# Plain workspaces.
+[[events]]
+on = "workspace.created"
+command = ["bash", "stack-icon.sh"]
+
+# Back-fills workspaces that existed before the plugin was installed.
+[[events]]
+on = "workspace.focused"
+command = ["bash", "stack-icon.sh"]
+
+# Agent rows read pane metadata, not workspace metadata, so a pane opened later
+# gets its icon the first time it is focused.
+[[events]]
+on = "pane.focused"
+command = ["bash", "stack-icon.sh"]
+
+# Manual re-scan of the focused workspace:
+#   herdr plugin action invoke bonkey.stack-icon.refresh
+[[actions]]
+id = "refresh"
+title = "Refresh stack icon"
+description = "Re-detect the technology stack of this workspace's repository."
+contexts = ["workspace"]
+command = ["bash", "stack-icon.sh"]

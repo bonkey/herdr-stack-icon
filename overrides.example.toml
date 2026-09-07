@@ -1,0 +1,12 @@
+# Copy to $(herdr plugin config-dir bonkey.stack-icon)/overrides.toml
+# One entry per line: repository name or path glob = icon. First match wins.
+# An empty icon hides the token for that repository.
+
+# by repository name
+"sundae-android" = "🤖"
+
+# by path glob (~/ is expanded)
+"~/Projects/League/*" = "🏒"
+
+# hide the icon
+"dotfiles" = ""
