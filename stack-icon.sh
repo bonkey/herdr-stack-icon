@@ -178,6 +178,8 @@ main() {
   else
     icon=""
   fi
+  # One line per run in `herdr plugin log --plugin bonkey.stack-icon`.
+  log "${HERDR_PLUGIN_EVENT:-${HERDR_PLUGIN_ACTION_ID:-run}} $ws cwd=$cwd root=$(repo_root "$cwd") icon=[$icon] plugin=$HERDR_PLUGIN_ROOT"
 
   report workspace "$ws" "$icon" || { log "workspace $ws: report-metadata failed"; rc=1; }
   for pane in $("$HERDR" pane list --workspace "$ws" 2>/dev/null | grep -o '"pane_id":"[^"]*"' | cut -d'"' -f4); do

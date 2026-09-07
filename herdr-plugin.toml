@@ -1,6 +1,6 @@
 id = "bonkey.stack-icon"
 name = "Stack icon"
-version = "0.2.2"
+version = "0.2.3"
 min_herdr_version = "0.8.0"
 description = "Shows a technology icon (🍏 🤖 🦀 🐹 🟩 🐍) next to each workspace, detected from the repository's files."
 platforms = ["macos", "linux"]
