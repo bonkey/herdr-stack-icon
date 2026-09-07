@@ -6,7 +6,7 @@
 #   bash stack-icon.sh                  run from a herdr event or action (reads HERDR_* env)
 #   bash stack-icon.sh --detect <path>  print the icon for a path and exit; no herdr calls
 #
-# Rules, first match wins, evaluated at the repository root:
+# Rules, first match wins, markers searched from the repository root down to depth 3:
 #   overrides.toml entry               (see override below)
 #   iOS/macOS and Android both present 🍏🤖
 #   *.xcodeproj *.xcworkspace Package.swift Podfile              🍏
@@ -87,18 +87,33 @@ override() {
   return 1
 }
 
+# Markers are searched from the repository root down to depth 3 (a monorepo
+# with ios/App/Foo.xcodeproj and backend/), skipping dependency and build folders.
 detect() {
-  local root=$1 ios=0 android=0 f
-  for f in Package.swift Podfile; do [ -e "$root/$f" ] && ios=1; done
-  for f in "$root"/*.xcodeproj "$root"/*.xcworkspace; do [ -e "$f" ] && ios=1; done
-  for f in settings.gradle settings.gradle.kts build.gradle build.gradle.kts; do [ -e "$root/$f" ] && android=1; done
+  local root=$1 ios=0 android=0 rust=0 go=0 node=0 py=0 f
+  while IFS= read -r f; do
+    case ${f##*/} in
+      *.xcodeproj | *.xcworkspace | Package.swift | Podfile) ios=1 ;;
+      settings.gradle | settings.gradle.kts | build.gradle | build.gradle.kts) android=1 ;;
+      Cargo.toml) rust=1 ;;
+      go.mod) go=1 ;;
+      package.json) node=1 ;;
+      pyproject.toml | requirements.txt) py=1 ;;
+    esac
+  done < <(find "$root" -maxdepth 3 \
+    \( -type d \( -name .git -o -name node_modules -o -name .build -o -name Pods -o -name DerivedData \
+       -o -name Carthage -o -name vendor -o -name .venv -o -name target -o -name build -o -name dist \) \) -prune -o \
+    \( -name '*.xcodeproj' -o -name '*.xcworkspace' -o -name Package.swift -o -name Podfile \
+       -o -name settings.gradle -o -name settings.gradle.kts -o -name build.gradle -o -name build.gradle.kts \
+       -o -name Cargo.toml -o -name go.mod -o -name package.json -o -name pyproject.toml -o -name requirements.txt \) \
+    -print 2>/dev/null)
   if [ "$ios" = 1 ] && [ "$android" = 1 ]; then printf '🍏🤖\n'; return 0; fi
   if [ "$ios" = 1 ]; then printf '🍏\n'; return 0; fi
   if [ "$android" = 1 ]; then printf '🤖\n'; return 0; fi
-  [ -e "$root/Cargo.toml" ] && { printf '🦀\n'; return 0; }
-  [ -e "$root/go.mod" ] && { printf '🐹\n'; return 0; }
-  [ -e "$root/package.json" ] && { printf '🟩\n'; return 0; }
-  if [ -e "$root/pyproject.toml" ] || [ -e "$root/requirements.txt" ]; then printf '🐍\n'; fi
+  if [ "$rust" = 1 ]; then printf '🦀\n'; return 0; fi
+  if [ "$go" = 1 ]; then printf '🐹\n'; return 0; fi
+  if [ "$node" = 1 ]; then printf '🟩\n'; return 0; fi
+  if [ "$py" = 1 ]; then printf '🐍\n'; fi
   return 0
 }
 

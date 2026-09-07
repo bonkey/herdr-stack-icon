@@ -32,11 +32,14 @@ icon the first time they are focused.
 
 ## Detection
 
-Evaluated at the repository root (`git rev-parse --show-toplevel`, so a linked worktree is
-detected like its main checkout); the workspace directory itself when it is not a checkout.
-First match wins:
+Markers are searched with `find` from the repository root (`git rev-parse --show-toplevel`,
+so a linked worktree is detected like its main checkout; the workspace directory itself when
+it is not a checkout) down to depth 3, so a monorepo with `ios/App/Foo.xcodeproj` and
+`backend/package.json` counts as iOS. `.git`, `node_modules`, `Pods`, `.build`,
+`DerivedData`, `Carthage`, `vendor`, `.venv`, `target`, `build` and `dist` are skipped; the
+scan takes a few milliseconds. First match wins:
 
-| Files at the root | Icon |
+| Marker | Icon |
 |---|---|
 | entry in `overrides.toml` (below) | as configured |
 | iOS/macOS **and** Android markers both present (KMP etc.) | 🍏🤖 |
@@ -48,9 +51,6 @@ First match wins:
 | `pyproject.toml`, `requirements.txt` | 🐍 |
 | nothing | token cleared, no placeholder |
 
-Only the root is scanned. A monorepo with the app in `ios/` gets its icon through an
-override.
-
 ## Overrides
 
 `$(herdr plugin config-dir bonkey.stack-icon)/overrides.toml`, one entry per line, first
@@ -59,7 +59,7 @@ worktrees), a checkout directory name, or a path glob; `~/` is expanded. An empt
 the token. A file with a line that does not parse is ignored as a whole, with a message in
 `herdr plugin log --plugin bonkey.stack-icon`.
 
-    "les-gardiens" = "🍏"          # app lives in ios/, root has no marker
+    "my-kmp-app" = "🤖"            # detection says 🍏🤖, you want 🤖
     "~/Projects/League/*" = "🏒"
     "dotfiles" = ""
 
