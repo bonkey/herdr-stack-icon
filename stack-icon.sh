@@ -6,7 +6,8 @@
 #   bash stack-icon.sh                  run from a herdr event or action (reads HERDR_* env)
 #   bash stack-icon.sh --detect <path>  print the icon for a path and exit; no herdr calls
 #
-# Rules, first match wins, markers searched from the repository root down to depth 3:
+# Rules, first match wins, markers searched down to depth 3 from the workspace folder,
+# then from the repository root:
 #   overrides.toml entry               (see override below)
 #   iOS/macOS and Android both present 🍏🤖
 #   *.xcodeproj *.xcworkspace Package.swift Podfile              🍏
@@ -117,10 +118,16 @@ detect() {
   return 0
 }
 
+# The workspace's own folder is checked before the repository root, so a
+# workspace opened in a package inside a larger repo shows that package's stack.
 icon_for() {
-  local root icon
-  root=$(repo_root "$1")
-  if icon=$(override "$root"); then :; else icon=$(detect "$root"); fi
+  local cwd=$1 root icon
+  root=$(repo_root "$cwd")
+  if icon=$(override "$root"); then :; else
+    icon=""
+    [ "$cwd" != "$root" ] && icon=$(detect "$cwd")
+    [ -n "$icon" ] || icon=$(detect "$root")
+  fi
   printf '%s\n' "$icon"
 }
 

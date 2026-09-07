@@ -32,10 +32,11 @@ icon the first time they are focused.
 
 ## Detection
 
-Markers are searched with `find` from the repository root (`git rev-parse --show-toplevel`,
-so a linked worktree is detected like its main checkout; the workspace directory itself when
-it is not a checkout) down to depth 3, so a monorepo with `ios/App/Foo.xcodeproj` and
-`backend/package.json` counts as iOS. `.git`, `node_modules`, `Pods`, `.build`,
+Markers are searched with `find` down to depth 3, first from the workspace's own folder,
+then from the repository root (`git rev-parse --show-toplevel`, so a linked worktree is
+detected like its main checkout). A workspace opened in `packages/SwiftThing/` with its own
+`Package.swift` is 🍏 even if the repository root says otherwise; a monorepo opened at its
+root with `ios/App/Foo.xcodeproj` and `backend/package.json` counts as iOS. `.git`, `node_modules`, `Pods`, `.build`,
 `DerivedData`, `Carthage`, `vendor`, `.venv`, `target`, `build` and `dist` are skipped; the
 scan takes a few milliseconds. First match wins:
 
