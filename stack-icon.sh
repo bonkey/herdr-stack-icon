@@ -5,6 +5,7 @@
 #
 #   bash stack-icon.sh                  run from a herdr event or action (reads HERDR_* env)
 #   bash stack-icon.sh --detect <path>  print the icon for a path and exit; no herdr calls
+#   bash stack-icon.sh --explain <path> show root, markers found and the resulting icon
 #
 # Rules, first match wins, markers searched down to depth 3 from the workspace folder,
 # then from the repository root:
@@ -88,6 +89,18 @@ override() {
   return 1
 }
 
+# Marker files under a directory, down to depth 3. Dot-directories (.git,
+# .opencode, .build, .venv, ...) and dependency or build folders are skipped.
+markers() {
+  find "$1" -mindepth 1 -maxdepth 3 \
+    \( -type d \( -name '.*' -o -name node_modules -o -name Pods -o -name DerivedData -o -name Carthage \
+       -o -name vendor -o -name target -o -name build -o -name dist \) \) -prune -o \
+    \( -name '*.xcodeproj' -o -name '*.xcworkspace' -o -name Package.swift -o -name Podfile \
+       -o -name settings.gradle -o -name settings.gradle.kts -o -name build.gradle -o -name build.gradle.kts \
+       -o -name Cargo.toml -o -name go.mod -o -name package.json -o -name pyproject.toml -o -name requirements.txt \) \
+    -print 2>/dev/null
+}
+
 # Markers are searched from the repository root down to depth 3 (a monorepo
 # with ios/App/Foo.xcodeproj and backend/), skipping dependency and build folders.
 detect() {
@@ -101,13 +114,7 @@ detect() {
       package.json) node=1 ;;
       pyproject.toml | requirements.txt) py=1 ;;
     esac
-  done < <(find "$root" -maxdepth 3 \
-    \( -type d \( -name .git -o -name node_modules -o -name .build -o -name Pods -o -name DerivedData \
-       -o -name Carthage -o -name vendor -o -name .venv -o -name target -o -name build -o -name dist \) \) -prune -o \
-    \( -name '*.xcodeproj' -o -name '*.xcworkspace' -o -name Package.swift -o -name Podfile \
-       -o -name settings.gradle -o -name settings.gradle.kts -o -name build.gradle -o -name build.gradle.kts \
-       -o -name Cargo.toml -o -name go.mod -o -name package.json -o -name pyproject.toml -o -name requirements.txt \) \
-    -print 2>/dev/null)
+  done < <(markers "$root")
   if [ "$ios" = 1 ] && [ "$android" = 1 ]; then printf '🍏🤖\n'; return 0; fi
   if [ "$ios" = 1 ]; then printf '🍏\n'; return 0; fi
   if [ "$android" = 1 ]; then printf '🤖\n'; return 0; fi
@@ -144,6 +151,17 @@ main() {
   local ws cwd icon pane rc=0
   if [ "${1:-}" = "--detect" ]; then
     icon_for "${2:?usage: stack-icon.sh --detect <path>}"
+    return 0
+  fi
+  if [ "${1:-}" = "--explain" ]; then
+    cwd=${2:?usage: stack-icon.sh --explain <path>}
+    local root
+    root=$(repo_root "$cwd")
+    printf 'folder:    %s\nrepo root: %s\nrepo name: %s\n' "$cwd" "$root" "$(repo_name "$root")"
+    printf 'override:  %s\n' "$(override "$root" || printf '(none)')"
+    printf 'markers under folder:\n'; markers "$cwd" | sed "s#^$cwd/#  #"
+    [ "$cwd" != "$root" ] && { printf 'markers under repo root:\n'; markers "$root" | sed "s#^$root/#  #"; }
+    printf 'icon:      [%s]\n' "$(icon_for "$cwd")"
     return 0
   fi
 

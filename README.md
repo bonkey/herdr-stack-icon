@@ -36,9 +36,9 @@ Markers are searched with `find` down to depth 3, first from the workspace's own
 then from the repository root (`git rev-parse --show-toplevel`, so a linked worktree is
 detected like its main checkout). A workspace opened in `packages/SwiftThing/` with its own
 `Package.swift` is 🍏 even if the repository root says otherwise; a monorepo opened at its
-root with `ios/App/Foo.xcodeproj` and `backend/package.json` counts as iOS. `.git`, `node_modules`, `Pods`, `.build`,
-`DerivedData`, `Carthage`, `vendor`, `.venv`, `target`, `build` and `dist` are skipped; the
-scan takes a few milliseconds. First match wins:
+root with `ios/App/Foo.xcodeproj` and `backend/package.json` counts as iOS. Dot-directories (`.git`, `.build`, `.venv`,
+`.opencode`, ...), `node_modules`, `Pods`, `DerivedData`, `Carthage`, `vendor`, `target`,
+`build` and `dist` are skipped; the scan takes a few milliseconds. First match wins:
 
 | Marker | Icon |
 |---|---|
@@ -85,6 +85,10 @@ The script is re-read on every run; relink after editing `herdr-plugin.toml`. Ch
 for any path without herdr:
 
     bash stack-icon.sh --detect ~/Projects/some-repo
+    bash stack-icon.sh --explain ~/Projects/some-repo   # root, markers found, resulting icon
+
+A workspace keeps the icon it was given until its next `workspace.focused`; after updating
+the plugin, focus the workspace once or run the refresh action.
 
 ## License
 
