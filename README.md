@@ -27,8 +27,8 @@ Then render the token in `config.toml` — the plugin only reports a value; add
       ["agent"],
     ]
 
-and `herdr server reload-config`. Workspaces that were open before the install get their
-icon the first time they are focused.
+and `herdr server reload-config`. Every workspace gets its icon the next time the herdr
+server starts; before that, a workspace gets it the first time it is focused.
 
 ## Detection
 
@@ -72,10 +72,14 @@ Event hooks: `worktree.created`, `worktree.opened`, `workspace.created`, `worksp
 `pane.created` and `pane.focused` (Agent rows read pane metadata, so every pane gets its own
 copy of the icon). Detection is a handful of file existence tests; there is no cache.
 
-A `cd` in a pane emits `pane.updated`, which herdr does not dispatch to event hooks, so a
-`[[startup]]` watcher subscribes to it on the herdr socket: a pane that moves into another
-repository gets the right icon at once, and the Space row follows when that pane is
-focused. Only the event's pane is checked, and nothing is reported when its token already
+A token lives only in the running server. The `[[startup]]` hook therefore reports every
+workspace herdr holds before it does anything else, and again whenever the socket closes;
+without that, a Space row stays empty after a restart until its workspace is focused.
+
+The same hook then follows `cd`. A `cd` in a pane emits `pane.updated`, which herdr does not
+dispatch to event hooks, so the hook subscribes to it on the herdr socket: a pane that moves
+into another repository gets the right icon at once, and the Space row follows when that pane
+is focused. Only the event's pane is checked, and nothing is reported when its token already
 matches, since a report itself emits `pane.updated`. The watcher needs `nc -U` (macOS,
 netcat-openbsd), `ncat` or `python3`; without one it logs and exits, and icons still refresh
 on focus. Startup hooks run when the herdr server starts, so after installing either restart
@@ -98,12 +102,13 @@ for any path without herdr:
 
     bash stack-icon.sh --detect ~/Projects/some-repo
     bash stack-icon.sh --explain ~/Projects/some-repo   # root, markers found, resulting icon
-    bash stack-icon.sh --watch &                         # the startup watcher, by hand
+    bash stack-icon.sh --all                             # report every workspace, then exit
+    bash stack-icon.sh --watch &                         # the startup hook, by hand
 
 `herdr server reload-config` and plugin link/enable do not run startup hooks; the watcher
 started by hand stays until the next herdr server start replaces it. A workspace keeps the
 icon it was given until its next `workspace.focused` or a `cd` in one of its panes; after
-updating the plugin, focus the workspace once or run the refresh action.
+updating the plugin, run `bash stack-icon.sh --all`, restart herdr, or focus the workspace.
 
 ## License
 

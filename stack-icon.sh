@@ -6,8 +6,14 @@
 #   bash stack-icon.sh                  run from a herdr event or action (reads HERDR_* env)
 #   bash stack-icon.sh --detect <path>  print the icon for a path and exit; no herdr calls
 #   bash stack-icon.sh --explain <path> show root, markers found and the resulting icon
-#   bash stack-icon.sh --watch          follow pane.updated on the herdr socket; started by
-#                                       herdr as the [[startup]] hook, or by hand during dev
+#   bash stack-icon.sh --all            report every workspace, then exit
+#   bash stack-icon.sh --watch          report every workspace, then follow pane.updated on
+#                                       the herdr socket; started by herdr as the [[startup]]
+#                                       hook, or by hand during dev
+#
+# The token lives only in the running server, so --watch reports every workspace
+# before it subscribes, and again whenever the socket closes: otherwise a Space
+# row stays empty until its workspace is focused.
 #
 # herdr emits pane.updated on every cd in a pane, but does not dispatch it to
 # plugin event hooks, so --watch subscribes on the socket instead. Only the
@@ -187,6 +193,42 @@ report() {
   fi
 }
 
+# report_workspace <label> <workspace id> [cwd]: detect the icon for the
+# workspace's folder and publish it on the workspace (Space row) and on each of
+# its panes (Agent rows). Without <cwd>, the first pane's folder is used.
+# Logs one line per call in `herdr plugin log --plugin bonkey.stack-icon`.
+report_workspace() {
+  local label=$1 ws=$2 cwd=${3:-} icon pane rc=0
+  [ -n "$cwd" ] || cwd=$("$HERDR" pane list --workspace "$ws" 2>/dev/null | grep -o '"cwd":"[^"]*"' | head -n1 | cut -d'"' -f4)
+  if [ -d "$cwd" ]; then icon=$(icon_for "$cwd"); else icon=""; fi
+  log "$label $ws cwd=$cwd root=$(repo_root "$cwd") icon=[$icon] plugin=${HERDR_PLUGIN_ROOT:-}"
+  report workspace "$ws" "$icon" || { log "workspace $ws: report-metadata failed"; rc=1; }
+  for pane in $("$HERDR" pane list --workspace "$ws" 2>/dev/null | grep -o '"pane_id":"[^"]*"' | cut -d'"' -f4); do
+    report pane "$pane" "$icon" || { log "pane $pane: report-metadata failed"; rc=1; }
+  done
+  return $rc
+}
+
+# Every workspace herdr currently holds. `workspace list` is answered from
+# memory; it is retried because a server that is still starting answers nothing.
+seed_all() {
+  local ids ws attempt=1 rc=0
+  while :; do
+    ids=$(run_timeout "$HERDR_TIMEOUT" "$HERDR" workspace list 2>/dev/null | grep -o '"workspace_id":"[^"]*"' | cut -d'"' -f4)
+    [ -n "$ids" ] && break
+    if [ "$attempt" -ge 5 ]; then
+      log "workspace list is empty; reported nothing"
+      return 1
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+  done
+  for ws in $ids; do
+    report_workspace "${HERDR_PLUGIN_EVENT:-all}" "$ws" || rc=1
+  done
+  return $rc
+}
+
 # pane_updated <event json>: re-detect for the event's pane only. The workspace
 # follows the focused pane's cwd, so a focused pane also refreshes the Space row.
 pane_updated() {
@@ -287,6 +329,7 @@ watch() {
   log "watching $SOCK, pid $$"
 
   while :; do
+    seed_all
     if watch_once; then
       failures=0
       log "socket closed, reconnecting"
@@ -304,7 +347,7 @@ watch() {
 }
 
 main() {
-  local ws cwd icon pane rc=0
+  local ws cwd
   if [ "${1:-}" = "--detect" ]; then
     icon_for "${2:?usage: stack-icon.sh --detect <path>}"
     return 0
@@ -326,6 +369,11 @@ main() {
     return $?
   fi
 
+  if [ "${1:-}" = "--all" ]; then
+    seed_all
+    return $?
+  fi
+
   ws=${HERDR_WORKSPACE_ID:-}
   [ -n "$ws" ] || ws=$(json_str "${HERDR_PLUGIN_CONTEXT_JSON:-}" workspace_id)
   if [ -z "$ws" ]; then
@@ -333,20 +381,7 @@ main() {
     return 1
   fi
   cwd=$(json_str "${HERDR_PLUGIN_CONTEXT_JSON:-}" workspace_cwd)
-  [ -n "$cwd" ] || cwd=$("$HERDR" pane list --workspace "$ws" 2>/dev/null | grep -o '"cwd":"[^"]*"' | head -n1 | cut -d'"' -f4)
-  if [ -d "$cwd" ]; then
-    icon=$(icon_for "$cwd")
-  else
-    icon=""
-  fi
-  # One line per run in `herdr plugin log --plugin bonkey.stack-icon`.
-  log "${HERDR_PLUGIN_EVENT:-${HERDR_PLUGIN_ACTION_ID:-run}} $ws cwd=$cwd root=$(repo_root "$cwd") icon=[$icon] plugin=$HERDR_PLUGIN_ROOT"
-
-  report workspace "$ws" "$icon" || { log "workspace $ws: report-metadata failed"; rc=1; }
-  for pane in $("$HERDR" pane list --workspace "$ws" 2>/dev/null | grep -o '"pane_id":"[^"]*"' | cut -d'"' -f4); do
-    report pane "$pane" "$icon" || { log "pane $pane: report-metadata failed"; rc=1; }
-  done
-  return $rc
+  report_workspace "${HERDR_PLUGIN_EVENT:-${HERDR_PLUGIN_ACTION_ID:-run}}" "$ws" "$cwd"
 }
 
 main "$@"

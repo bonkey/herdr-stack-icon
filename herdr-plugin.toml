@@ -1,6 +1,6 @@
 id = "bonkey.stack-icon"
 name = "Stack icon"
-version = "0.3.0"
+version = "0.4.0"
 min_herdr_version = "0.8.0"
 description = "Shows a technology icon (🍏 🤖 🦀 🐹 🟩 🐍) next to each workspace, detected from the repository's files."
 platforms = ["macos", "linux"]
@@ -42,9 +42,11 @@ command = ["bash", "stack-icon.sh"]
 on = "pane.created"
 command = ["bash", "stack-icon.sh"]
 
-# herdr does not dispatch pane.updated (emitted on every cd) to event hooks, so
-# one long-lived subscriber follows it on the socket: a pane that moves to
-# another repository gets the right icon without a refocus.
+# The token lives only in the running server, so this hook reports every
+# workspace when the server starts; a Space row would otherwise stay empty until
+# its workspace is focused. It then stays alive as a subscriber: herdr does not
+# dispatch pane.updated (emitted on every cd) to event hooks, so a pane that
+# moves to another repository gets the right icon without a refocus.
 [[startup]]
 command = ["bash", "stack-icon.sh", "--watch"]
 
