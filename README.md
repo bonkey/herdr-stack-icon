@@ -68,9 +68,21 @@ See `overrides.example.toml`.
 
 ## When it runs
 
-`worktree.created`, `worktree.opened`, `workspace.created`, `workspace.focused` and
-`pane.focused` (Agent rows read pane metadata, so a pane opened later gets the icon when it is
-first focused). Detection is a handful of file existence tests; there is no cache.
+Event hooks: `worktree.created`, `worktree.opened`, `workspace.created`, `workspace.focused`,
+`pane.created` and `pane.focused` (Agent rows read pane metadata, so every pane gets its own
+copy of the icon). Detection is a handful of file existence tests; there is no cache.
+
+A `cd` in a pane emits `pane.updated`, which herdr does not dispatch to event hooks, so a
+`[[startup]]` watcher subscribes to it on the herdr socket: a pane that moves into another
+repository gets the right icon at once, and the Space row follows when that pane is
+focused. Only the event's pane is checked, and nothing is reported when its token already
+matches, since a report itself emits `pane.updated`. The watcher needs `nc -U` (macOS,
+netcat-openbsd), `ncat` or `python3`; without one it logs and exits, and icons still refresh
+on focus. Startup hooks run when the herdr server starts, so after installing either restart
+herdr or start the watcher by hand once: `bash stack-icon.sh --watch &` from the plugin
+directory. It replaces any earlier instance (pid file), reconnects when the socket closes, and
+exits after three failed subscriptions. Log: `watch.log` under the plugin state directory,
+`~/.local/state/herdr/plugins/bonkey.stack-icon/`.
 
 Manual re-scan of the focused workspace, also in the workspace right-click menu:
 
@@ -86,9 +98,12 @@ for any path without herdr:
 
     bash stack-icon.sh --detect ~/Projects/some-repo
     bash stack-icon.sh --explain ~/Projects/some-repo   # root, markers found, resulting icon
+    bash stack-icon.sh --watch &                         # the startup watcher, by hand
 
-A workspace keeps the icon it was given until its next `workspace.focused`; after updating
-the plugin, focus the workspace once or run the refresh action.
+`herdr server reload-config` and plugin link/enable do not run startup hooks; the watcher
+started by hand stays until the next herdr server start replaces it. A workspace keeps the
+icon it was given until its next `workspace.focused` or a `cd` in one of its panes; after
+updating the plugin, focus the workspace once or run the refresh action.
 
 ## License
 

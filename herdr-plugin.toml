@@ -1,6 +1,6 @@
 id = "bonkey.stack-icon"
 name = "Stack icon"
-version = "0.2.3"
+version = "0.3.0"
 min_herdr_version = "0.8.0"
 description = "Shows a technology icon (🍏 🤖 🦀 🐹 🟩 🐍) next to each workspace, detected from the repository's files."
 platforms = ["macos", "linux"]
@@ -35,6 +35,18 @@ command = ["bash", "stack-icon.sh"]
 [[events]]
 on = "pane.focused"
 command = ["bash", "stack-icon.sh"]
+
+# A new pane starts with its workspace's folder; give it the icon at once
+# instead of on its first focus.
+[[events]]
+on = "pane.created"
+command = ["bash", "stack-icon.sh"]
+
+# herdr does not dispatch pane.updated (emitted on every cd) to event hooks, so
+# one long-lived subscriber follows it on the socket: a pane that moves to
+# another repository gets the right icon without a refocus.
+[[startup]]
+command = ["bash", "stack-icon.sh", "--watch"]
 
 # Manual re-scan of the focused workspace:
 #   herdr plugin action invoke bonkey.stack-icon.refresh
