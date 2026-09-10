@@ -26,12 +26,20 @@
 # repository root. A marker in the folder itself decides alone; markers further
 # down decide only when the folder holds none, and package.json then needs a
 # lock file next to it. Within the deciding tier the first match wins:
-#   overrides.toml entry               (see override below)
-#   iOS/macOS and Android both present 🍏🤖 (at any depth)
-#   *.xcodeproj *.xcworkspace Package.swift Podfile              🍏
-#   settings.gradle[.kts] build.gradle[.kts]                     🤖
-#   Cargo.toml 🦀   go.mod 🐹   package.json 🟩   pyproject.toml / requirements.txt 🐍
+#                                                     nerd             emoji
+#   overrides.toml entry                              as configured (see override below)
+#   iOS/macOS and Android both present, at any depth  apple + android  🍏🤖
+#   *.xcodeproj *.xcworkspace Package.swift Podfile   apple            🍏
+#   settings.gradle[.kts] build.gradle[.kts]          android          🤖
+#   Cargo.toml                                        rust             🦀
+#   go.mod                                            go               🐹
+#   package.json                                      nodejs_small     🟩
+#   pyproject.toml requirements.txt                   python           🐍
 #   nothing matched: the token is cleared, never a placeholder.
+#
+# The nerd column is the default. It names a Devicons glyph, so `apple` is
+# nf-dev-apple; NERD below holds the codepoints. `icons = "emoji"` in
+# config.toml in the plugin config dir picks the emoji column instead.
 
 import fnmatch
 import json
@@ -73,14 +81,31 @@ MARKER_NAMES = {
 MARKER_SUFFIXES = (".xcodeproj", ".xcworkspace")
 
 # The order the deciding tier is searched in.
-ICONS = (
-    ("ios", "🍏"),
-    ("android", "🤖"),
-    ("rust", "🦀"),
-    ("go", "🐹"),
-    ("node", "🟩"),
-    ("py", "🐍"),
-)
+KINDS = ("ios", "android", "rust", "go", "node", "py")
+
+# Every glyph is a Devicon in the U+E700-U+E7C5 block, which Nerd Fonts v3 kept
+# where v2 had it, so the set renders the same in both. A terminal without a
+# Nerd Font shows a replacement box for each one.
+NERD = {
+    "ios": "\ue711",  # nf-dev-apple
+    "android": "\ue70e",  # nf-dev-android
+    "rust": "\ue7a8",  # nf-dev-rust
+    "go": "\ue724",  # nf-dev-go
+    "node": "\ue718",  # nf-dev-nodejs_small
+    "py": "\ue73c",  # nf-dev-python
+}
+
+EMOJI = {
+    "ios": "🍏",
+    "android": "🤖",
+    "rust": "🦀",
+    "go": "🐹",
+    "node": "🟩",
+    "py": "🐍",
+}
+
+ICON_SETS = {"nerd": NERD, "emoji": EMOJI}
+DEFAULT_ICON_SET = "nerd"
 
 LOCK_FILES = (
     "package-lock.json",
@@ -96,10 +121,16 @@ OVERRIDE_LINE = re.compile(
     r'^[ \t\r\f\v]*("[^"]+"|[A-Za-z0-9_.~/*?-]+)[ \t\r\f\v]*=[ \t\r\f\v]*"[^"]*"[ \t\r\f\v]*(#.*)?$'
 )
 
+# A `name = "value"` setting in config.toml, with an optional trailing comment.
+SETTING_LINE = re.compile(
+    r'^[ \t\r\f\v]*([A-Za-z0-9_-]+)[ \t\r\f\v]*=[ \t\r\f\v]*"([^"]*)"[ \t\r\f\v]*(#.*)?$'
+)
+
 BLANK = " \t\r\f\v"
 
 _STAMP = False
 _MISSING = object()
+_CONFIG_DIR = None
 
 
 def log(message):
@@ -300,14 +331,15 @@ def has_lockfile(directory):
     return any(os.path.isfile(os.path.join(directory, name)) for name in LOCK_FILES)
 
 
-def detect(root):
+def detect(root, icon_set):
     """Markers are searched down to depth 3, skipping dependency and build folders.
     A marker in the folder itself decides alone, so a repository with its own
-    pyproject.toml is 🐍 even when a sub-app one level down has package.json;
+    pyproject.toml is Python even when a sub-app one level down has package.json;
     markers further down decide only when the folder itself holds none (a monorepo
     with ios/App/Foo.xcodeproj and backend/). iOS and Android markers together are
-    the KMP case at any depth. Further down, package.json counts only next to a
-    lock file: a repository that uses npm for tooling keeps its own stack."""
+    the KMP case at any depth, and show both icons. Further down, package.json
+    counts only next to a lock file: a repository that uses npm for tooling keeps
+    its own stack."""
     every = set()
     top = set()
     for path, depth in markers(root):
@@ -320,25 +352,73 @@ def detect(root):
         if depth == 1:
             top.add(kind)
     if "ios" in every and "android" in every:
-        return "🍏🤖"
+        return icon_set["ios"] + icon_set["android"]
     deciding = top or every
-    for kind, icon in ICONS:
+    for kind in KINDS:
         if kind in deciding:
-            return icon
+            return icon_set[kind]
     return ""
+
+
+def config_dir():
+    """The plugin config dir: `herdr plugin config-dir bonkey.stack-icon`, which
+    herdr also passes in HERDR_PLUGIN_CONFIG_DIR. Asked once, because the fallback
+    spawns herdr and every pane is detected on its own."""
+    global _CONFIG_DIR
+    if _CONFIG_DIR is None:
+        directory = env("HERDR_PLUGIN_CONFIG_DIR")
+        if not directory:
+            _, directory = run_herdr(["plugin", "config-dir", SOURCE])
+            directory = directory.rstrip("\n")
+        _CONFIG_DIR = directory
+    return _CONFIG_DIR
+
+
+def setting(key):
+    """`key = "value"` from config.toml in the plugin config dir, empty when the
+    file or the key is absent. A line that does not parse is skipped, so a key
+    added by a later version does not disable the ones this version knows."""
+    path = os.path.join(config_dir(), "config.toml")
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as handle:
+            text = handle.read()
+    except OSError:
+        return ""
+    for line in text.split("\n"):
+        found = SETTING_LINE.match(line)
+        if found and found.group(1) == key:
+            return found.group(2)
+    return ""
+
+
+def set_name():
+    """Which icon set to report: `icons` in config.toml, else the default. An
+    unknown name keeps the default and is logged."""
+    name = setting("icons")
+    if not name:
+        return DEFAULT_ICON_SET
+    if name not in ICON_SETS:
+        log(
+            'config.toml: icons = "%s" is not one of %s; using "%s"'
+            % (name, ", ".join(sorted(ICON_SETS)), DEFAULT_ICON_SET)
+        )
+        return DEFAULT_ICON_SET
+    return name
+
+
+def icons():
+    """The icons of the selected set, keyed by stack."""
+    return ICON_SETS[set_name()]
 
 
 def override(root):
     """overrides.toml in the plugin config dir (`herdr plugin config-dir bonkey.stack-icon`):
     one `key = "icon"` per line, key = repository name, checkout directory name,
-    or a path glob (`~/` allowed). An empty icon hides the token. A file with an
-    unparsable line is ignored whole.
+    or a path glob (`~/` allowed). The icon is any string, so it wins over both
+    icon sets. An empty icon hides the token. A file with an unparsable line is
+    ignored whole.
     Returns the icon on a match, None otherwise."""
-    directory = env("HERDR_PLUGIN_CONFIG_DIR")
-    if not directory:
-        _, directory = run_herdr(["plugin", "config-dir", SOURCE])
-        directory = directory.rstrip("\n")
-    path = os.path.join(directory, "overrides.toml")
+    path = os.path.join(config_dir(), "overrides.toml")
     if not os.path.isfile(path):
         return None
     try:
@@ -383,11 +463,12 @@ def icon_for(cwd):
     configured = override(root)
     if configured is not None:
         return configured
+    chosen = icons()
     icon = ""
     if cwd != root:
-        icon = detect(cwd)
+        icon = detect(cwd, chosen)
     if not icon:
-        icon = detect(root)
+        icon = detect(root, chosen)
     return icon
 
 
@@ -665,6 +746,7 @@ def explain(cwd):
     print("repo name: %s" % repo_name(root))
     configured = override(root)
     print("override:  %s" % ("(none)" if configured is None else configured))
+    print("icon set:  %s" % set_name())
     print("markers under folder:")
     for path, _ in markers(cwd):
         print(strip_base(path, cwd))

@@ -1,4 +1,5 @@
-"""Shared fixtures: the plugin entry point, a stub herdr, and the call log it writes.
+"""Shared fixtures: the plugin entry point, a stub herdr, the call log it writes,
+and the plugin config file that selects an icon set.
 
 The stub answers `workspace list` and `pane list` from files named by the
 WORKSPACES and PANES environment variables, and appends every report-metadata
@@ -45,6 +46,11 @@ def write(path, text=""):
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(text)
     return path
+
+
+def choose_icons(config_dir, name):
+    """Write the plugin config.toml that selects an icon set."""
+    return write(os.path.join(config_dir, "config.toml"), 'icons = "%s"\n' % name)
 
 
 def calls(path):

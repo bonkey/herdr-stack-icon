@@ -3,6 +3,11 @@
 [Herdr](https://herdr.dev) plugin: a technology icon next to every workspace in the
 sidebar, detected from the repository's files. Display only — nothing is renamed.
 
+     les-gardiens          sundae-android          shared-kmp
+     ripgrep               gcai-go                 sf-symbols-mcp          mobile-broom
+
+Nerd Font glyphs are the default; [emoji](#icon-set) are one setting away.
+
     🍏 les-gardiens        🤖 sundae-android        🍏🤖 shared-kmp
     🦀 ripgrep             🐹 gcai-go               🟩 sf-symbols-mcp        🐍 mobile-broom
 
@@ -11,9 +16,10 @@ sidebar, detected from the repository's files. Display only — nothing is renam
     herdr plugin install bonkey/herdr-stack-icon
 
 Requires herdr ≥ 0.8, Python 3.9 or newer (macOS Command Line Tools include it) and git.
-The standard library is enough; there is nothing to install.
+The standard library is enough; there is nothing to install. The default icons need a
+Nerd Font in the terminal; [emoji](#icon-set) need none.
 
-Then render the token in `config.toml` — the plugin only reports a value; add
+Then render the token in herdr's `config.toml` — the plugin only reports a value; add
 `{ token = "$stack" }` where you want it in both sidebar panels:
 
     [ui.sidebar.spaces]
@@ -36,10 +42,10 @@ server starts; before that, a workspace gets it the first time it is focused.
 Markers are searched down to depth 3, first from the workspace's own folder,
 then from the repository root (`git rev-parse --show-toplevel`, so a linked worktree is
 detected like its main checkout). A workspace opened in `packages/SwiftThing/` with its own
-`Package.swift` is 🍏 even if the repository root says otherwise.
+`Package.swift` is iOS/macOS even if the repository root says otherwise.
 
 A marker in the folder itself decides alone: a documentation repository with its own
-`pyproject.toml` is 🐍 even when a sub-app one level down has `package.json`. Markers
+`pyproject.toml` is Python even when a sub-app one level down has `package.json`. Markers
 further down decide only when the folder itself holds none, so a monorepo opened at its
 root with `ios/App/Foo.xcodeproj` and `backend/package.json` counts as iOS. Further down,
 `package.json` needs a lock file next to it (`package-lock.json`, `npm-shrinkwrap.json`,
@@ -51,27 +57,45 @@ Dot-directories (`.git`, `.build`, `.venv`,
 `build` and `dist` are skipped; the scan takes a few milliseconds. iOS and Android together
 are the KMP case at any depth; otherwise the first match wins within the deciding tier:
 
-| Marker | Icon |
-|---|---|
-| entry in `overrides.toml` (below) | as configured |
-| iOS/macOS **and** Android markers both present (KMP etc.) | 🍏🤖 |
-| `*.xcodeproj`, `*.xcworkspace`, `Package.swift`, `Podfile` | 🍏 |
-| `settings.gradle[.kts]`, `build.gradle[.kts]` | 🤖 |
-| `Cargo.toml` | 🦀 |
-| `go.mod` | 🐹 |
-| `package.json` | 🟩 |
-| `pyproject.toml`, `requirements.txt` | 🐍 |
-| nothing | token cleared, no placeholder |
+| Marker | Nerd Font | Emoji |
+|---|---|---|
+| entry in `overrides.toml` (below) | as configured | as configured |
+| iOS/macOS **and** Android markers both present (KMP etc.) |  `U+E711` + `U+E70E` | 🍏🤖 |
+| `*.xcodeproj`, `*.xcworkspace`, `Package.swift`, `Podfile` |  `U+E711` `nf-dev-apple` | 🍏 |
+| `settings.gradle[.kts]`, `build.gradle[.kts]` |  `U+E70E` `nf-dev-android` | 🤖 |
+| `Cargo.toml` |  `U+E7A8` `nf-dev-rust` | 🦀 |
+| `go.mod` |  `U+E724` `nf-dev-go` | 🐹 |
+| `package.json` |  `U+E718` `nf-dev-nodejs_small` | 🟩 |
+| `pyproject.toml`, `requirements.txt` |  `U+E73C` `nf-dev-python` | 🐍 |
+| nothing | token cleared, no placeholder | token cleared, no placeholder |
+
+## Icon set
+
+Nerd Font glyphs are the default. They are Devicons in the private use area, so the
+terminal needs a [Nerd Font](https://www.nerdfonts.com); with any other font every
+one of them is a replacement box (`▯`). All six sit in `U+E700`–`U+E7C5`, which Nerd
+Fonts v3 left where v2 had it, so a v2 font shows the same icons.
+
+Emoji are the alternative. Pick the set in
+`$(herdr plugin config-dir bonkey.stack-icon)/config.toml`:
+
+    icons = "emoji"     # "nerd" (the default) or "emoji"
+
+The file is read on every run, so the setting reaches the event hooks, the startup
+watcher, the `refresh` action and `python3 stack-icon.py --detect` alike; no reload
+and no restart. An unknown name keeps the default and writes a line to
+`herdr plugin log --plugin bonkey.stack-icon`. See `config.example.toml`.
 
 ## Overrides
 
 `$(herdr plugin config-dir bonkey.stack-icon)/overrides.toml`, one entry per line, first
 match wins. The key is a repository name (the main checkout's directory, also for linked
-worktrees), a checkout directory name, or a path glob; `~/` is expanded. An empty icon hides
-the token. A file with a line that does not parse is ignored as a whole, with a message in
-`herdr plugin log --plugin bonkey.stack-icon`.
+worktrees), a checkout directory name, or a path glob; `~/` is expanded. The icon is any
+string — an emoji, a Nerd Font glyph or a word — so an entry wins over both icon sets. An
+empty icon hides the token. A file with a line that does not parse is ignored as a whole,
+with a message in `herdr plugin log --plugin bonkey.stack-icon`.
 
-    "my-kmp-app" = "🤖"            # detection says 🍏🤖, you want 🤖
+    "my-kmp-app" = "🤖"            # detection shows both, you want Android alone
     "~/Projects/League/*" = "🏒"
     "dotfiles" = ""
 
@@ -114,7 +138,7 @@ The script is re-read on every run; relink after editing `herdr-plugin.toml`. Ch
 for any path without herdr:
 
     python3 stack-icon.py --detect ~/Projects/some-repo
-    python3 stack-icon.py --explain ~/Projects/some-repo  # root, markers found, resulting icon
+    python3 stack-icon.py --explain ~/Projects/some-repo  # root, markers, icon set, resulting icon
     python3 stack-icon.py --all                           # report every workspace, then exit
     python3 stack-icon.py --watch &                       # the startup hook, by hand
 

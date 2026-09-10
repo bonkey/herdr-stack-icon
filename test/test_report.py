@@ -2,7 +2,8 @@
 """Tests for what report_workspace publishes, with a stub herdr: it answers
 `pane list` from a fixture and records every report-metadata call in a file.
 Two folders stand in for two repositories, so a workspace whose panes sit in
-different repositories must produce different icons.
+different repositories must produce different icons. The icon set is pinned to
+emoji, which also shows that the event path reads the setting.
 
     python3 -m unittest discover -s test
 """
@@ -29,6 +30,7 @@ class ReportTest(unittest.TestCase):
         self.work = support.workdir(self, "stack-icon-report-test.")
         self.config = os.path.join(self.work, "config")
         os.makedirs(self.config)
+        support.choose_icons(self.config, "emoji")
         self.py = os.path.join(self.work, "py")
         self.go = os.path.join(self.work, "go")
         support.write(os.path.join(self.py, "pyproject.toml"))

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Fixture tests for the detection rules. Each case builds a folder tree, runs
-`stack-icon.py --detect` on it and compares the icon. No herdr and no network:
-HERDR_PLUGIN_CONFIG_DIR points at an empty folder, so no override matches, and
-a fixture is not a git checkout, so the folder is its own repository root.
+"""Fixture tests for the detection rules and for the two icon sets. Each case
+builds a folder tree, runs `stack-icon.py --detect` on it and compares the icon.
+No herdr and no network: HERDR_PLUGIN_CONFIG_DIR points at a folder the case
+owns, which also holds the config.toml that selects the set, and a fixture is
+not a git checkout, so the folder is its own repository root.
 
     python3 -m unittest discover -s test
 """
@@ -12,8 +13,38 @@ import unittest
 
 import support
 
+# The marker that stands for each stack, and the icon each set reports for it.
+# Every stack appears in both tables, so a glyph that is empty or missing fails
+# a case instead of quietly leaving the sidebar blank.
+MARKERS = {
+    "ios": "Package.swift",
+    "android": "settings.gradle.kts",
+    "rust": "Cargo.toml",
+    "go": "go.mod",
+    "node": "package.json",
+    "py": "pyproject.toml",
+}
 
-class DetectTest(unittest.TestCase):
+NERD = {
+    "ios": "\ue711",  # nf-dev-apple
+    "android": "\ue70e",  # nf-dev-android
+    "rust": "\ue7a8",  # nf-dev-rust
+    "go": "\ue724",  # nf-dev-go
+    "node": "\ue718",  # nf-dev-nodejs_small
+    "py": "\ue73c",  # nf-dev-python
+}
+
+EMOJI = {
+    "ios": "🍏",
+    "android": "🤖",
+    "rust": "🦀",
+    "go": "🐹",
+    "node": "🟩",
+    "py": "🐍",
+}
+
+
+class Fixtures(unittest.TestCase):
     def setUp(self):
         self.work = support.workdir(self, "stack-icon-test.")
         self.config = os.path.join(self.work, "config")
@@ -38,6 +69,15 @@ class DetectTest(unittest.TestCase):
             else:
                 support.write(os.path.join(folder, entry))
         return self.icon_of(folder)
+
+
+class DetectTest(Fixtures):
+    """The rules that pick a stack. The icon set is pinned to emoji, so a rule
+    is read against one fixed alphabet."""
+
+    def setUp(self):
+        Fixtures.setUp(self)
+        support.choose_icons(self.config, "emoji")
 
     # The folder's own marker decides.
 
@@ -84,6 +124,42 @@ class DetectTest(unittest.TestCase):
         os.makedirs(folder)
         support.write(os.path.join(folder, "go.mod"))
         self.assertEqual(self.icon_of(folder), "🐹")
+
+
+class IconSetTest(Fixtures):
+    """Which alphabet a decided stack is reported in. setUp writes no
+    config.toml, so a case sees the shipped default until it asks for a set."""
+
+    def each_stack(self, wanted):
+        for kind in sorted(MARKERS):
+            with self.subTest(kind=kind):
+                self.assertTrue(wanted[kind], "the table has no icon for %s" % kind)
+                self.assertEqual(self.fixture(MARKERS[kind]), wanted[kind])
+
+    def test_nerd_font_glyphs_are_the_default(self):
+        self.each_stack(NERD)
+
+    def test_the_config_switches_to_emoji(self):
+        support.choose_icons(self.config, "emoji")
+        self.each_stack(EMOJI)
+
+    def test_an_unknown_set_keeps_the_default(self):
+        support.choose_icons(self.config, "runes")
+        self.each_stack(NERD)
+
+    def test_kmp_shows_both_technologies_in_both_sets(self):
+        both = ("Package.swift", "settings.gradle.kts")
+        self.assertEqual(self.fixture(*both), NERD["ios"] + NERD["android"])
+        support.choose_icons(self.config, "emoji")
+        self.assertEqual(self.fixture(*both), EMOJI["ios"] + EMOJI["android"])
+
+    def test_an_override_beats_both_sets(self):
+        """An overrides.toml icon is any string, so it wins over whichever set
+        is in force. The key globs over the folder name every fixture gets."""
+        support.write(os.path.join(self.config, "overrides.toml"), '"case*" = "🏒"\n')
+        self.assertEqual(self.fixture("go.mod"), "🏒")
+        support.choose_icons(self.config, "emoji")
+        self.assertEqual(self.fixture("go.mod"), "🏒")
 
 
 if __name__ == "__main__":

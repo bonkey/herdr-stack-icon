@@ -1,13 +1,16 @@
 id = "bonkey.stack-icon"
 name = "Stack icon"
-version = "0.4.0"
+version = "0.5.0"
 min_herdr_version = "0.8.0"
-description = "Shows a technology icon (🍏 🤖 🦀 🐹 🟩 🐍) next to each workspace, detected from the repository's files."
+description = "Shows a technology icon next to each workspace, detected from the repository's files. Nerd Font glyphs by default, emoji (🍏 🤖 🦀 🐹 🟩 🐍) on request."
 platforms = ["macos", "linux"]
 
 # Render it in config.toml by adding { token = "$stack" } to a row of both
 # [ui.sidebar.spaces] and [ui.sidebar.agents], for example:
 #   rows = [["state_icon", { token = "$stack" }, "workspace"], ...]
+
+# The icon set is chosen in config.toml in the plugin config directory
+# (`herdr plugin config-dir bonkey.stack-icon`); see config.example.toml.
 
 # Commands run with the plugin root as cwd, so the script is addressed by name.
 

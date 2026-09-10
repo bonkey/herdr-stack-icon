@@ -3,7 +3,8 @@
 stub herdr. They cover the loop guard: report-metadata on a pane emits
 pane.updated, so a pane whose token already matches must not be reported again,
 and the token that decides is the pane's own, not a workspace token the same
-event happens to carry.
+event happens to carry. The icon set is pinned to emoji, which also shows that
+the watcher reads the setting.
 
     python3 -m unittest discover -s test
 """
@@ -48,6 +49,7 @@ class WatchTest(unittest.TestCase):
         self.work = support.workdir(self, "si-watch.")
         self.config = os.path.join(self.work, "config")
         os.makedirs(self.config)
+        support.choose_icons(self.config, "emoji")
         self.py = os.path.join(self.work, "py")
         self.go = os.path.join(self.work, "go")
         support.write(os.path.join(self.py, "pyproject.toml"))
