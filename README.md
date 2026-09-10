@@ -44,6 +44,10 @@ then from the repository root (`git rev-parse --show-toplevel`, so a linked work
 detected like its main checkout). A workspace opened in `packages/SwiftThing/` with its own
 `Package.swift` is iOS/macOS even if the repository root says otherwise.
 
+A folder outside a git checkout gets no icon at all. A home directory that holds somebody's
+demo three folders down is not that demo, and a pane sitting in `~` should show nothing. An
+`overrides.toml` entry still decides, there as everywhere.
+
 A marker in the folder itself decides alone: a documentation repository with its own
 `pyproject.toml` is Python even when a sub-app one level down has `package.json`. Markers
 further down decide only when the folder itself holds none, so a monorepo opened at its
@@ -106,8 +110,9 @@ See `overrides.example.toml`.
 Event hooks: `worktree.created`, `worktree.opened`, `workspace.created`, `workspace.focused`,
 `pane.created` and `pane.focused`. Agent rows read pane metadata, so every pane is detected
 from its own folder: a pane that works in another repository shows that repository's icon
-and leaves its siblings alone. The Space row follows the focused pane, or the workspace's
-folder while no pane is focused. Detection is a handful of file existence tests; there is no
+and leaves its siblings alone. The Space row follows the focused pane; while no pane of the
+workspace is focused it shows the workspace's own checkout, not wherever an unfocused pane
+wandered off to. Detection is a handful of file existence tests; there is no
 cache.
 
 A token lives only in the running server. The `[[startup]]` hook therefore reports every

@@ -458,11 +458,16 @@ def override(root):
 
 def icon_for(cwd):
     """The workspace's own folder is checked before the repository root, so a
-    workspace opened in a package inside a larger repo shows that package's stack."""
-    root = repo_root(cwd)
-    configured = override(root)
+    workspace opened in a package inside a larger repo shows that package's stack.
+    A folder outside a git checkout gets no icon: a home directory that holds a
+    project three folders down is not that project. An overrides.toml entry still
+    decides, there as everywhere."""
+    root = git_output(cwd, ["rev-parse", "--show-toplevel"])
+    configured = override(root or cwd)
     if configured is not None:
         return configured
+    if not root:
+        return ""
     chosen = icons()
     icon = ""
     if cwd != root:
@@ -506,7 +511,9 @@ def report_workspace(label, workspace, cwd=""):
     from that pane's own folder, and on the workspace itself (Space row), which
     follows the focused pane. A pane that sits in another repository therefore keeps
     its own icon instead of spreading it over its siblings. With no focused pane,
-    `cwd` decides, or the first pane's folder.
+    `cwd` decides — the workspace's own checkout folder, so a Space row shows its
+    repository and not wherever an unfocused pane wandered off to — and the first
+    pane's folder is the last resort.
     Logs one line per call in `herdr plugin log --plugin bonkey.stack-icon`."""
     ws_icon = ""
     ws_cwd = ""
@@ -535,19 +542,29 @@ def report_workspace(label, workspace, cwd=""):
     return ok
 
 
+def checkout_path(workspace):
+    """The folder a workspace's worktree is checked out in, as `workspace list`
+    reports it."""
+    worktree = workspace.get("worktree")
+    if not isinstance(worktree, dict):
+        return ""
+    value = worktree.get("checkout_path")
+    return value if isinstance(value, str) else ""
+
+
 def seed_all():
     """Every workspace herdr currently holds. `workspace list` is answered from
     memory; it is retried because a server that is still starting answers nothing."""
-    ids = []
+    found = []
     for attempt in range(1, 6):
         _, out = run_herdr(["workspace", "list"])
-        ids = []
+        found = []
         for doc in load_json_docs(out):
             for obj in iter_objects(doc):
                 value = obj.get("workspace_id")
                 if isinstance(value, str) and value:
-                    ids.append(value)
-        if ids:
+                    found.append((value, checkout_path(obj)))
+        if found:
             break
         if attempt == 5:
             log("workspace list is empty; reported nothing")
@@ -555,8 +572,8 @@ def seed_all():
         time.sleep(1)
     ok = True
     label = env("HERDR_PLUGIN_EVENT", "all")
-    for workspace in ids:
-        if not report_workspace(label, workspace):
+    for workspace, folder in found:
+        if not report_workspace(label, workspace, folder):
             ok = False
     return ok
 

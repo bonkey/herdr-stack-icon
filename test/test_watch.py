@@ -50,8 +50,8 @@ class WatchTest(unittest.TestCase):
         self.config = os.path.join(self.work, "config")
         os.makedirs(self.config)
         support.choose_icons(self.config, "emoji")
-        self.py = os.path.join(self.work, "py")
-        self.go = os.path.join(self.work, "go")
+        self.py = support.make_repo(os.path.join(self.work, "py"))
+        self.go = support.make_repo(os.path.join(self.work, "go"))
         support.write(os.path.join(self.py, "pyproject.toml"))
         support.write(os.path.join(self.go, "go.mod"))
 

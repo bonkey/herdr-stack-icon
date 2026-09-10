@@ -38,6 +38,20 @@ def make_stub(directory):
     return path
 
 
+def make_repo(folder):
+    """Make `folder` a git checkout, which every real herdr workspace is. A folder
+    outside a checkout is detected as nothing, so a fixture that tests the rules
+    has to be one."""
+    os.makedirs(folder, exist_ok=True)
+    subprocess.run(
+        ["git", "init", "-q", folder],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=True,
+    )
+    return folder
+
+
 def write(path, text=""):
     """Create a file, and the folders leading to it."""
     folder = os.path.dirname(path)

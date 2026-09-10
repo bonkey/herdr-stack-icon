@@ -2,8 +2,8 @@
 """Fixture tests for the detection rules and for the two icon sets. Each case
 builds a folder tree, runs `stack-icon.py --detect` on it and compares the icon.
 No herdr and no network: HERDR_PLUGIN_CONFIG_DIR points at a folder the case
-owns, which also holds the config.toml that selects the set, and a fixture is
-not a git checkout, so the folder is its own repository root.
+owns, which also holds the config.toml that selects the set. A fixture is a git
+checkout, because a folder outside one is detected as nothing.
 
     python3 -m unittest discover -s test
 """
@@ -62,7 +62,7 @@ class Fixtures(unittest.TestCase):
         ending in / is created as a directory."""
         self.cases += 1
         folder = os.path.join(self.work, "case%d" % self.cases)
-        os.makedirs(folder)
+        support.make_repo(folder)
         for entry in entries:
             if entry.endswith("/"):
                 os.makedirs(os.path.join(folder, entry), exist_ok=True)
@@ -120,8 +120,7 @@ class DetectTest(Fixtures):
     # A path that the shell version's `cut -d'"'` string picking could not carry.
 
     def test_a_path_containing_a_double_quote(self):
-        folder = os.path.join(self.work, 'say "hi"')
-        os.makedirs(folder)
+        folder = support.make_repo(os.path.join(self.work, 'say "hi"'))
         support.write(os.path.join(folder, "go.mod"))
         self.assertEqual(self.icon_of(folder), "🐹")
 
@@ -160,6 +159,43 @@ class IconSetTest(Fixtures):
         self.assertEqual(self.fixture("go.mod"), "🏒")
         support.choose_icons(self.config, "emoji")
         self.assertEqual(self.fixture("go.mod"), "🏒")
+
+
+class OutsideACheckoutTest(Fixtures):
+    """A folder that is not a git checkout is not a project. A home directory
+    holds somebody's demo three folders down; that must not become its icon."""
+
+    def setUp(self):
+        Fixtures.setUp(self)
+        support.choose_icons(self.config, "emoji")
+        self.cases = 0
+
+    def plain(self, *entries):
+        """Like `fixture`, without making the folder a checkout."""
+        self.cases += 1
+        folder = os.path.join(self.work, "plain%d" % self.cases)
+        os.makedirs(folder)
+        for entry in entries:
+            support.write(os.path.join(folder, entry))
+        return folder
+
+    def test_a_project_further_down_gives_no_icon(self):
+        folder = self.plain("Documents/demo/package.json", "Documents/demo/package-lock.json")
+        self.assertEqual(self.icon_of(folder), "")
+
+    def test_even_a_marker_in_the_folder_itself_gives_no_icon(self):
+        self.assertEqual(self.icon_of(self.plain("go.mod")), "")
+
+    def test_an_override_still_decides(self):
+        support.write(os.path.join(self.config, "overrides.toml"), '"plain*" = "🏒"\n')
+        self.assertEqual(self.icon_of(self.plain("go.mod")), "🏒")
+
+    def test_a_checkout_of_the_same_tree_is_detected(self):
+        """The same folders inside a checkout keep their icon, so the rule above
+        turns on being a repository and on nothing else."""
+        folder = self.plain("Documents/demo/package.json", "Documents/demo/package-lock.json")
+        support.make_repo(folder)
+        self.assertEqual(self.icon_of(folder), EMOJI["node"])
 
 
 if __name__ == "__main__":
