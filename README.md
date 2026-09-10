@@ -6,7 +6,8 @@ sidebar, detected from the repository's files. Display only — nothing is renam
      les-gardiens          sundae-android          shared-kmp
      ripgrep               gcai-go                 sf-symbols-mcp          mobile-broom
 
-Nerd Font glyphs are the default; [emoji](#icon-set) are one setting away.
+Nerd Font glyphs are the default; [emoji](#icon-set) are one setting away, and herdr
+paints [each technology in its own colour](#colour).
 
     🍏 les-gardiens        🤖 sundae-android        🍏🤖 shared-kmp
     🦀 ripgrep             🐹 gcai-go               🟩 sf-symbols-mcp        🐍 mobile-broom
@@ -90,6 +91,77 @@ watcher, the `refresh` action and `python3 stack-icon.py --detect` alike; no rel
 and no restart. An unknown name keeps the default and writes a line to
 `herdr plugin log --plugin bonkey.stack-icon`. See `config.example.toml`.
 
+## Colour
+
+A Nerd Font glyph is monochrome: it takes the colour of the row it sits in, so every icon is
+the same grey. The colour belongs in herdr's own `config.toml`, not in the plugin, because a
+token entry there accepts up to 16 ordered `rules`: each one matches the token's value and
+sets the style, and the first match wins. One rule per icon gives every technology its own
+colour.
+
+The token itself cannot carry colour. herdr normalises reported metadata — it trims the
+value, removes control characters and caps it at 80 characters — so an ANSI escape arrives
+without its `ESC` and prints the rest as text. A reporter provides values; the sidebar
+configuration provides the style.
+
+`rules` need herdr 0.9 or newer; 0.8 gives a token one fixed `fg`, the same colour for every
+technology. A style applies to the occurrence it is written on, so each panel needs its own
+copy:
+
+    [ui.sidebar.spaces]
+    rows = [
+      ["state_icon", { token = "$stack", rules = [
+        { equals = "\ue711\ue70e", fg = "#9061e8" },  # iOS and Android together (KMP)
+        { equals = "\ue711", fg = "#7c7c82" },        # iOS/macOS
+        { equals = "\ue70e", fg = "#0d9152" },        # Android
+        { equals = "\ue7a8", fg = "#c2571a" },        # Rust
+        { equals = "\ue724", fg = "#0087a8" },        # Go
+        { equals = "\ue718", fg = "#4c8f3a" },        # Node
+        { equals = "\ue73c", fg = "#3d7fbf" },        # Python
+      ] }, "workspace"],
+      ["branch", "git_status"],
+    ]
+
+    [ui.sidebar.agents]
+    rows = [
+      ["state_icon", { token = "$stack", rules = [
+        { equals = "\ue711\ue70e", fg = "#9061e8" },  # iOS and Android together (KMP)
+        { equals = "\ue711", fg = "#7c7c82" },        # iOS/macOS
+        { equals = "\ue70e", fg = "#0d9152" },        # Android
+        { equals = "\ue7a8", fg = "#c2571a" },        # Rust
+        { equals = "\ue724", fg = "#0087a8" },        # Go
+        { equals = "\ue718", fg = "#4c8f3a" },        # Node
+        { equals = "\ue73c", fg = "#3d7fbf" },        # Python
+      ] }, "workspace", "tab"],
+      ["agent"],
+    ]
+
+Then `herdr config check`, then `herdr server reload-config`. The check earns its keep: herdr
+rejects a malformed rule and falls back to the **default** sidebar layout, which drops the
+custom rows whole. `\ue711` is the TOML escape for the glyph the plugin reports, so the file needs
+no private-use character to survive a copy; the codepoints are the ones in the
+[detection table](#detection). `equals` is exact, so the order above is for reading only, and
+the two-glyph KMP value needs a rule of its own.
+
+`fg` takes a strict `#RGB` or `#RRGGBB` and nothing else: `cyan` and a 256-colour index are
+both rejected, and a rule also accepts `bold` and `dim`. The colours are the technologies'
+own, darkened to mid-tone, so each one keeps a contrast of at least 3:1 on a white, a black, a
+Catppuccin Mocha, a One Dark and a Solarized Light background.
+
+| Stack | Colour | |
+|---|---|---|
+| iOS/macOS | `#7c7c82` | silver |
+| Android | `#0d9152` | Android green |
+| Rust | `#c2571a` | rust |
+| Go | `#0087a8` | gopher cyan |
+| Node | `#4c8f3a` | leaf green |
+| Python | `#3d7fbf` | python blue |
+| iOS **and** Android (KMP) | `#9061e8` | Kotlin purple |
+
+[Emoji](#icon-set) carry their own colour and need no rules; `fg` does not repaint a colour
+emoji. An [override](#overrides) is an arbitrary string, which matches none of the rules
+above, so it keeps the row's colour until a rule with its exact text is added.
+
 ## Overrides
 
 `$(herdr plugin config-dir bonkey.stack-icon)/overrides.toml`, one entry per line, first
@@ -149,8 +221,9 @@ for any path without herdr:
 
 Tests need neither herdr nor a network. `test_detect.py` runs the rules against folder
 fixtures, `test_report.py` runs the event path against a stub herdr and checks what is
-published on the workspace and on each pane, and `test_watch.py` runs the watcher against a
-herdr socket the test itself serves:
+published on the workspace and on each pane, `test_watch.py` runs the watcher against a
+herdr socket the test itself serves, and `test_colours.py` holds the [colour](#colour) rules
+in this file against the icons the plugin reports:
 
     python3 -m unittest discover -s test
 
