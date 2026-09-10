@@ -10,8 +10,9 @@ The stub herdr answers `config check` (CHECK_EXIT makes it refuse) and records
 what it was pointed at, so a rejected result can be told apart from an accepted
 one without herdr itself.
 
-`fixtures/user-config.toml` is a real config, rules and all, and the round trip
-over it is the case that matters most: nerd, emoji, nerd again, byte for byte.
+`fixtures/user-config.toml` carries the sidebar tables of a config in daily use,
+another plugin's rules and all, and the round trip over it is the case that
+matters most: nerd, emoji, nerd again, byte for byte.
 
     python3 -m unittest discover -s test
 """
