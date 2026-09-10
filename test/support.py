@@ -4,6 +4,11 @@ and the plugin config file that selects an icon set.
 The stub answers `workspace list` and `pane list` from files named by the
 WORKSPACES and PANES environment variables, and appends every report-metadata
 call to CALLS, one call per line, so a test can assert on what was published.
+
+It also stands in for `config check`, which accepts whatever it is given unless
+CHECK_EXIT says otherwise, and for `server reload-config`. Both are recorded in
+CALLS as well; `config check` records the file it was pointed at, so a test can
+show that the live config was never the one under examination.
 """
 
 import os
@@ -19,13 +24,28 @@ import os
 import sys
 
 argv = sys.argv[1:]
+
+
+def record(line):
+    path = os.environ.get("CALLS")
+    if path:
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(line + "\\n")
+
+
 if argv[:2] == ["workspace", "list"]:
     sys.stdout.write(open(os.environ["WORKSPACES"], encoding="utf-8").read())
 elif argv[:2] == ["pane", "list"]:
     sys.stdout.write(open(os.environ["PANES"], encoding="utf-8").read())
+elif argv[:2] == ["config", "check"]:
+    record("config check " + os.environ.get("HERDR_CONFIG_PATH", ""))
+    code = int(os.environ.get("CHECK_EXIT", "0"))
+    sys.stdout.write("config: issues found\\nrejected by the stub\\n" if code else "config: ok\\n")
+    sys.exit(code)
+elif argv[:2] == ["server", "reload-config"]:
+    record("server reload-config")
 elif len(argv) > 1 and argv[1] == "report-metadata":
-    with open(os.environ["CALLS"], "a", encoding="utf-8") as handle:
-        handle.write(" ".join(argv) + "\\n")
+    record(" ".join(argv))
 '''
 
 
@@ -62,9 +82,15 @@ def write(path, text=""):
     return path
 
 
+def plugin_config(config_dir, **settings):
+    """Write the plugin's own config.toml, one `key = "value"` per setting."""
+    lines = ['%s = "%s"\n' % (key, value) for key, value in sorted(settings.items())]
+    return write(os.path.join(config_dir, "config.toml"), "".join(lines))
+
+
 def choose_icons(config_dir, name):
     """Write the plugin config.toml that selects an icon set."""
-    return write(os.path.join(config_dir, "config.toml"), 'icons = "%s"\n' % name)
+    return plugin_config(config_dir, icons=name)
 
 
 def calls(path):
@@ -75,16 +101,23 @@ def calls(path):
         return [line for line in handle.read().split("\n") if line]
 
 
-def run_script(args, environment, timeout=60):
-    """Run the plugin entry point and return (returncode, stdout)."""
+def run_logged(args, environment, timeout=60):
+    """Run the plugin entry point and return (returncode, stdout, log). The
+    plugin's log is what it writes to stderr."""
     done = subprocess.run(
         [sys.executable, SCRIPT] + args,
         stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
         env=environment,
         timeout=timeout,
     )
-    return done.returncode, done.stdout.decode("utf-8")
+    return done.returncode, done.stdout.decode("utf-8"), done.stderr.decode("utf-8")
+
+
+def run_script(args, environment, timeout=60):
+    """Run the plugin entry point and return (returncode, stdout)."""
+    code, out, _ = run_logged(args, environment, timeout)
+    return code, out
 
 
 def workdir(case, prefix):

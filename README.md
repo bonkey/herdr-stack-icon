@@ -6,8 +6,8 @@ sidebar, detected from the repository's files. Display only — nothing is renam
      les-gardiens          sundae-android          shared-kmp
      ripgrep               gcai-go                 sf-symbols-mcp          mobile-broom
 
-Nerd Font glyphs are the default; [emoji](#icon-set) are one setting away, and herdr
-paints [each technology in its own colour](#colour).
+Nerd Font glyphs are the default; [emoji](#icon-set) are one setting away, and
+[each technology gets its own colour](#colour) without anything to copy.
 
     🍏 les-gardiens        🤖 sundae-android        🍏🤖 shared-kmp
     🦀 ripgrep             🐹 gcai-go               🟩 sf-symbols-mcp        🐍 mobile-broom
@@ -37,6 +37,10 @@ Then render the token in herdr's `config.toml` — the plugin only reports a val
 
 and `herdr server reload-config`. Every workspace gets its icon the next time the herdr
 server starts; before that, a workspace gets it the first time it is focused.
+
+That is the whole of it. The [colour](#colour) of each glyph is the plugin's own
+business: it writes the `rules` onto the `$stack` entries above the next time the herdr
+server starts, and again whenever you change the icon set.
 
 ## Detection
 
@@ -89,24 +93,97 @@ Emoji are the alternative. Pick the set in
 The file is read on every run, so the setting reaches the event hooks, the startup
 watcher, the `refresh` action and `python3 stack-icon.py --detect` alike; no reload
 and no restart. An unknown name keeps the default and writes a line to
-`herdr plugin log --plugin bonkey.stack-icon`. See `config.example.toml`.
+`herdr plugin log --plugin bonkey.stack-icon`. The same file holds
+[`colours`](#opting-out). See `config.example.toml`.
+
+Emoji need no [colour rules](#colour), so choosing them also removes the ones the plugin
+wrote; the next `herdr server` start, or `python3 stack-icon.py --colours`, does it.
 
 ## Colour
 
-A Nerd Font glyph is monochrome: it takes the colour of the row it sits in, so every icon is
-the same grey. The colour belongs in herdr's own `config.toml`, not in the plugin, because a
-token entry there accepts up to 16 ordered `rules`: each one matches the token's value and
-sets the style, and the first match wins. One rule per icon gives every technology its own
-colour.
+A Nerd Font glyph is monochrome: it takes the colour of the row it sits in, so every icon
+would be the same grey. The token cannot carry a colour either — herdr normalises reported
+metadata, trimming the value, removing control characters and capping it at 80 characters,
+so an ANSI escape arrives without its `ESC` and prints the rest as text. The colour lives in
+herdr's own `config.toml` instead: a token entry there accepts up to 16 ordered `rules`,
+each one matching the token's value and setting a style. One rule per icon gives every
+technology its own colour.
 
-The token itself cannot carry colour. herdr normalises reported metadata — it trims the
-value, removes control characters and caps it at 80 characters — so an ANSI escape arrives
-without its `ESC` and prints the rest as text. A reporter provides values; the sidebar
-configuration provides the style.
+The plugin owns the palette, so it writes those rules itself. Install it, restart herdr, and
+the icons are coloured; there is no block to paste, and nothing to keep in step by hand when
+the plugin learns a new glyph.
 
-`rules` need herdr 0.9 or newer; 0.8 gives a token one fixed `fg`, the same colour for every
-technology. A style applies to the occurrence it is written on, so each panel needs its own
-copy:
+| Stack | Colour | |
+|---|---|---|
+| iOS/macOS | `#7c7c82` | silver |
+| Android | `#0d9152` | Android green |
+| Rust | `#c2571a` | rust |
+| Go | `#0087a8` | gopher cyan |
+| Node | `#4c8f3a` | leaf green |
+| Python | `#3d7fbf` | python blue |
+| iOS **and** Android (KMP) | `#9061e8` | Kotlin purple |
+
+The colours are the technologies' own, darkened to mid-tone, so each one keeps a contrast of
+at least 3:1 on a white, a black, a Catppuccin Mocha, a One Dark and a Solarized Light
+background. `equals` is exact, so the two-glyph KMP value gets a rule of its own and the
+order is for reading only.
+
+### When the rules are written
+
+The `[[startup]]` hook writes them once before it starts watching, so a herdr restart is all
+the integration there is. To write them again after changing the icon set or editing them by
+hand, use the workspace right-click menu (**Update stack icon colours**), or:
+
+    herdr plugin action invoke bonkey.stack-icon.colours
+    python3 stack-icon.py --colours     # the same thing, without herdr's menu
+
+A run that has nothing to change writes nothing, reloads nothing and logs nothing.
+
+### What it writes
+
+Every `$stack` entry in `ui.sidebar.*.rows` is styled on its own, in one panel or in both:
+
+| in `config.toml` | what happens |
+|---|---|
+| `{ token = "$stack" }` | gains the `rules` |
+| `"$stack"`, a bare string | becomes an entry, with the `rules` on it |
+| an entry that already carries `rules` | they are replaced |
+| `{ token = "$stack", fg = "#888", bold = true }` | `fg`, `bold` and `dim` stay, `rules` is added |
+| no `$stack` in any sidebar row | nothing is written; one line in the log says what to add |
+| `icons = "emoji"` | the rules the plugin wrote are removed again |
+
+`fg`, `bold` and `dim` on the entry style every value that no rule matches, which is the
+entry's own business, so they are kept and `rules` is written after them. With
+[emoji](#icon-set) only the plugin's own set of rules is removed: a hand-written set is
+left where it is, with a line in the log. Anything outside the `$stack` entries — comments,
+blank lines, other tokens, every other table — is left byte for byte as it was.
+
+### That file is yours
+
+A rule herdr rejects makes it fall back to the **default** sidebar, which drops every custom
+row. So the plugin writes the result to a temporary file next to the config, runs
+`HERDR_CONFIG_PATH=<temp> herdr config check` over it, and only moves it into place when the
+check passes; a config it cannot read whole, it does not touch at all. The file as it was is
+copied into the plugin state directory
+(`~/.local/state/herdr/plugins/bonkey.stack-icon/config-<timestamp>-<pid>.toml`) before
+anything is moved, and no earlier copy is ever overwritten. The move itself is atomic, and
+the file keeps the mode it had. After a successful write the plugin runs
+`herdr server reload-config`. The config is `HERDR_CONFIG_PATH` when it is set, else
+`~/.config/herdr/config.toml`.
+
+This is also what happens on herdr 0.8, which has no `rules`: the check refuses the result
+and the config keeps the shape it had.
+
+### Opting out
+
+`colours = "off"` in `$(herdr plugin config-dir bonkey.stack-icon)/config.toml` stops the
+plugin touching herdr's config at all. `"auto"` is the default. The icons then take the
+colour of their row, unless you write the rules yourself.
+
+### By hand
+
+The block the plugin writes, for anyone on herdr 0.8 or with `colours = "off"`. A style
+applies to the entry it is written on, so each panel needs its own copy:
 
     [ui.sidebar.spaces]
     rows = [
@@ -136,27 +213,12 @@ copy:
       ["agent"],
     ]
 
-Then `herdr config check`, then `herdr server reload-config`. The check earns its keep: herdr
-rejects a malformed rule and falls back to the **default** sidebar layout, which drops the
-custom rows whole. `\ue711` is the TOML escape for the glyph the plugin reports, so the file needs
-no private-use character to survive a copy; the codepoints are the ones in the
-[detection table](#detection). `equals` is exact, so the order above is for reading only, and
-the two-glyph KMP value needs a rule of its own.
-
-`fg` takes a strict `#RGB` or `#RRGGBB` and nothing else: `cyan` and a 256-colour index are
-both rejected, and a rule also accepts `bold` and `dim`. The colours are the technologies'
-own, darkened to mid-tone, so each one keeps a contrast of at least 3:1 on a white, a black, a
-Catppuccin Mocha, a One Dark and a Solarized Light background.
-
-| Stack | Colour | |
-|---|---|---|
-| iOS/macOS | `#7c7c82` | silver |
-| Android | `#0d9152` | Android green |
-| Rust | `#c2571a` | rust |
-| Go | `#0087a8` | gopher cyan |
-| Node | `#4c8f3a` | leaf green |
-| Python | `#3d7fbf` | python blue |
-| iOS **and** Android (KMP) | `#9061e8` | Kotlin purple |
+Then `herdr config check`, then `herdr server reload-config`. `rules` need herdr 0.9 or
+newer; 0.8 gives a token one fixed `fg`, the same colour for every technology. `\ue711` is
+the TOML escape for the glyph the plugin reports, so the file needs no private-use character
+to survive a copy; the codepoints are the ones in the [detection table](#detection). `fg`
+takes a strict `#RGB` or `#RRGGBB` and nothing else: `cyan` and a 256-colour index are both
+rejected, and a rule also accepts `bold` and `dim`.
 
 [Emoji](#icon-set) carry their own colour and need no rules; `fg` does not repaint a colour
 emoji. An [override](#overrides) is an arbitrary string, which matches none of the rules
@@ -189,7 +251,9 @@ cache.
 
 A token lives only in the running server. The `[[startup]]` hook therefore reports every
 workspace herdr holds before it does anything else, and again whenever the socket closes;
-without that, a Space row stays empty after a restart until its workspace is focused.
+without that, a Space row stays empty after a restart until its workspace is focused. Before
+the first report it brings the [colour rules](#colour) in `config.toml` in step with the icon
+set, which is why installing the plugin and restarting herdr is the whole integration.
 
 The same hook then follows `cd`. A `cd` in a pane emits `pane.updated`, which herdr does not
 dispatch to event hooks, so the hook subscribes to it on the herdr socket: a pane that moves
@@ -202,9 +266,11 @@ instance (pid file), reconnects when the socket closes, and exits after three fa
 subscriptions. Log: `watch.log` under the plugin state directory,
 `~/.local/state/herdr/plugins/bonkey.stack-icon/`.
 
-Manual re-scan of the focused workspace, also in the workspace right-click menu:
+Manual re-scan of the focused workspace, and a manual rewrite of the colour rules; both are
+in the workspace right-click menu too:
 
     herdr plugin action invoke bonkey.stack-icon.refresh
+    herdr plugin action invoke bonkey.stack-icon.colours
 
 ## Development
 
@@ -217,13 +283,19 @@ for any path without herdr:
     python3 stack-icon.py --detect ~/Projects/some-repo
     python3 stack-icon.py --explain ~/Projects/some-repo  # root, markers, icon set, resulting icon
     python3 stack-icon.py --all                           # report every workspace, then exit
+    python3 stack-icon.py --colours                       # write the colour rules, then exit
     python3 stack-icon.py --watch &                       # the startup hook, by hand
+
+`--colours` and `--watch` write to `HERDR_CONFIG_PATH`, or to `~/.config/herdr/config.toml`
+when it is unset. Point it at a copy while working on the patcher.
 
 Tests need neither herdr nor a network. `test_detect.py` runs the rules against folder
 fixtures, `test_report.py` runs the event path against a stub herdr and checks what is
 published on the workspace and on each pane, `test_watch.py` runs the watcher against a
-herdr socket the test itself serves, and `test_colours.py` holds the [colour](#colour) rules
-in this file against the icons the plugin reports:
+herdr socket the test itself serves, `test_config_rules.py` runs the [colour](#colour)
+patcher over every config shape, `test/fixtures/user-config.toml` included, and
+`test_colours.py` holds the rules in this file against both the icons the plugin reports and
+the rules it writes:
 
     python3 -m unittest discover -s test
 

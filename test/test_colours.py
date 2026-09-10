@@ -3,7 +3,13 @@
 in the plugin can go wrong when it drifts: a glyph that gains a codepoint, or a
 rule left behind, would simply stop matching and show up as an uncoloured icon
 in somebody's sidebar. These cases read the rules out of README.md and hold them
-against the icons `stack-icon.py --detect` really reports.
+against the icons `stack-icon.py --detect` really reports, and against the rules
+`stack-icon.py --colours` really writes.
+
+That last one closes the circle: the recipe in README.md is what somebody on
+herdr 0.8, or with `colours = "off"`, copies by hand, so it has to say exactly
+what the palette in stack-icon.py produces. Change one colour there and this
+file fails.
 
     python3 -m unittest discover -s test
 """
@@ -27,8 +33,10 @@ MARKERS = {
 }
 
 # One `$stack` token entry in a rows table, and the rules written on it. Each
-# panel styles its own occurrence, so the recipe holds the token twice.
-OCCURRENCE = re.compile(r'token = "\$stack", rules = \[(.*?)\]\s*\}', re.S)
+# panel styles its own occurrence, so the recipe holds the token twice. The
+# newline after the bracket is what tells the recipe from a `rules = [...]` that
+# the prose elsewhere in README.md mentions on one line.
+OCCURRENCE = re.compile(r'token = "\$stack", rules = \[\n(.*?)\n\s*\]\s*\}', re.S)
 RULE = re.compile(r'\{ equals = "([^"]*)", fg = "([^"]*)" \}')
 ESCAPE = re.compile(r'\\u([0-9a-fA-F]{4})')
 
@@ -79,6 +87,29 @@ class ColourRulesTest(unittest.TestCase):
         icons.append(self.icon_of(MARKERS["ios"], MARKERS["android"]))
         return icons
 
+    def written(self):
+        """The rules `--colours` writes, read back out of the config it wrote
+        them into. A stub herdr stands in for `config check`."""
+        folder = os.path.join(self.work, "herdr")
+        os.makedirs(folder, exist_ok=True)
+        path = support.write(
+            os.path.join(folder, "config.toml"),
+            '[ui.sidebar.spaces]\nrows = [["state_icon", { token = "$stack" }]]\n',
+        )
+        environment = dict(
+            os.environ,
+            HERDR_PLUGIN_CONFIG_DIR=self.config,
+            HERDR_PLUGIN_STATE_DIR=os.path.join(folder, "state"),
+            HERDR_BIN_PATH=support.make_stub(folder),
+            HERDR_CONFIG_PATH=path,
+        )
+        for name in ("CALLS", "CHECK_EXIT"):
+            environment.pop(name, None)
+        code, _ = support.run_script(["--colours"], environment)
+        self.assertEqual(code, 0)
+        with open(path, "r", encoding="utf-8") as handle:
+            return [(unescape(icon), colour) for icon, colour in RULE.findall(handle.read())]
+
     def test_both_panels_carry_the_same_rules(self):
         self.assertEqual(len(self.rules), 2)
         self.assertEqual(self.rules[0], self.rules[1])
@@ -108,6 +139,15 @@ class ColourRulesTest(unittest.TestCase):
     def test_no_token_holds_more_rules_than_herdr_allows(self):
         for block in self.rules:
             self.assertLessEqual(len(block), RULE_LIMIT)
+
+    def test_the_plugin_writes_the_rules_this_file_documents(self):
+        """The recipe in README.md is the manual fallback. It has to be the same
+        set, in the same order, with the same colours, as the one the plugin
+        writes by itself."""
+        self.assertEqual(self.written(), self.rules[0])
+
+    def test_the_plugin_writes_no_more_rules_than_herdr_allows(self):
+        self.assertLessEqual(len(self.written()), RULE_LIMIT)
 
 
 if __name__ == "__main__":

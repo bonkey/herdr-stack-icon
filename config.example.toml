@@ -4,3 +4,12 @@
 #   "nerd"  ->         (default; needs a Nerd Font in the terminal)
 #   "emoji" -> 🍏 🤖 🦀 🐹 🟩 🐍
 icons = "nerd"
+
+# Whether the plugin paints the icons, by writing the `rules` of every $stack
+# token in herdr's own config.toml.
+#   "auto" -> keep the rules in step with the icon set (default). The nerd set
+#             gets one rule per glyph; the emoji set carries its own colour, so
+#             the rules the plugin wrote are removed again.
+#   "off"  -> never touch herdr's config.toml. Write the rules by hand, or live
+#             with icons in the colour of their row.
+colours = "auto"

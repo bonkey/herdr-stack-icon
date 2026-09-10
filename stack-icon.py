@@ -8,9 +8,11 @@
 #   python3 stack-icon.py --detect <path>  print the icon for a path and exit; no herdr calls
 #   python3 stack-icon.py --explain <path> show root, markers found and the resulting icon
 #   python3 stack-icon.py --all            report every workspace, then exit
-#   python3 stack-icon.py --watch          report every workspace, then follow pane.updated on
-#                                          the herdr socket; started by herdr as the [[startup]]
-#                                          hook, or by hand during dev
+#   python3 stack-icon.py --colours        write the sidebar colour rules into herdr's
+#                                          config.toml, then exit
+#   python3 stack-icon.py --watch          write the colour rules, report every workspace, then
+#                                          follow pane.updated on the herdr socket; started by
+#                                          herdr as the [[startup]] hook, or by hand during dev
 #
 # The token lives only in the running server, so --watch reports every workspace
 # before it subscribes, and again whenever the socket closes: otherwise a Space
@@ -40,6 +42,10 @@
 # The nerd column is the default. It names a Devicons glyph, so `apple` is
 # nf-dev-apple; NERD below holds the codepoints. `icons = "emoji"` in
 # config.toml in the plugin config dir picks the emoji column instead.
+#
+# A nerd glyph is monochrome, so the plugin also writes the `rules` that paint
+# each one into herdr's own config.toml; see "Colour rules" below. `colours =
+# "off"` in the same config.toml stops it touching that file.
 
 import fnmatch
 import json
@@ -107,6 +113,28 @@ EMOJI = {
 ICON_SETS = {"nerd": NERD, "emoji": EMOJI}
 DEFAULT_ICON_SET = "nerd"
 
+# The colour of each nerd glyph, and the label its rule carries as a comment. A
+# key with a `+` is the two-glyph value, so "ios+android" is the KMP case. Each
+# colour is the technology's own, darkened to mid-tone, so every one keeps a
+# contrast of at least 3:1 on a white, a black, a Catppuccin Mocha, a One Dark
+# and a Solarized Light background. Emoji carry their own colour and get none.
+COLOURS = (
+    ("ios+android", "#9061e8", "iOS and Android together (KMP)"),
+    ("ios", "#7c7c82", "iOS/macOS"),
+    ("android", "#0d9152", "Android"),
+    ("rust", "#c2571a", "Rust"),
+    ("go", "#0087a8", "Go"),
+    ("node", "#4c8f3a", "Node"),
+    ("py", "#3d7fbf", "Python"),
+)
+
+# The token the rules are written on, and the most rules herdr accepts on one.
+TOKEN = "$stack"
+RULE_LIMIT = 16
+
+COLOUR_MODES = ("auto", "off")
+DEFAULT_COLOUR_MODE = "auto"
+
 LOCK_FILES = (
     "package-lock.json",
     "npm-shrinkwrap.json",
@@ -171,14 +199,17 @@ def basename(path):
 # --------------------------------------------------------------------------
 
 
-def run_herdr(args, capture=True):
-    """Return (ok, stdout). `ok` is False when herdr failed, timed out or is missing."""
+def run_herdr(args, capture=True, extra_env=None):
+    """Return (ok, stdout). `ok` is False when herdr failed, timed out or is missing.
+    `extra_env` adds to the environment, which `config check` needs to point herdr
+    at a file that is not the live config."""
     try:
         done = subprocess.run(
             [herdr_bin()] + args,
             stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=HERDR_TIMEOUT,
+            env=dict(os.environ, **extra_env) if extra_env else None,
         )
     except (OSError, subprocess.SubprocessError):
         return False, ""
@@ -478,6 +509,477 @@ def icon_for(cwd):
 
 
 # --------------------------------------------------------------------------
+# Colour rules in herdr's config.toml
+# --------------------------------------------------------------------------
+#
+# A nerd glyph is monochrome: it takes the colour of the row it sits in. The
+# token cannot carry a colour either, because herdr strips control characters
+# from reported metadata, so an ANSI escape never survives. The colour therefore
+# belongs to herdr's own config.toml, as `rules` on the `$stack` token: each rule
+# matches the token's value and sets a style. The plugin owns the palette above,
+# so it writes those rules itself; nobody has to paste a block and keep it in
+# step with the glyphs by hand.
+#
+# That file is hand-maintained, and a rule herdr rejects makes it fall back to
+# the *default* sidebar, which silently drops every custom row. So the patcher
+# rewrites the `$stack` elements and nothing else, leaves every other byte where
+# it was, validates the result with `herdr config check` on a temporary copy in
+# the same folder, keeps the file as it was in the plugin state directory, and
+# only then moves the copy into place. Anything it cannot read makes it stop and
+# leave the file alone: half an edit is worse than none.
+#
+# There is no TOML writer in the standard library, and tomllib is read-only and
+# absent before 3.11, so the scanner below is the whole of it. It understands
+# strings (basic, literal and multi-line), comments, arrays, inline tables,
+# dotted keys and table headers — enough to find `ui.sidebar.*.rows`, walk it,
+# and take the span of each `$stack` element.
+
+
+class ConfigShape(Exception):
+    """config.toml holds something this patcher will not edit blind."""
+
+
+BASIC_ESCAPES = {"b": "\b", "t": "\t", "n": "\n", "f": "\f", "r": "\r", '"': '"', "\\": "\\"}
+
+
+def skip_gap(text, i):
+    """Past whitespace, newlines and comments."""
+    while i < len(text):
+        if text[i] in " \t\r\n":
+            i += 1
+        elif text[i] == "#":
+            while i < len(text) and text[i] != "\n":
+                i += 1
+        else:
+            break
+    return i
+
+
+def skip_spaces(text, i):
+    """Past spaces and tabs, staying on the line."""
+    while i < len(text) and text[i] in " \t":
+        i += 1
+    return i
+
+
+def string_end(text, i):
+    """Index after the string that starts at `i`."""
+    quote = text[i]
+    if text[i:i + 3] == quote * 3:
+        j = i + 3
+        while j < len(text):
+            if quote == '"' and text[j] == "\\":
+                j += 2
+                continue
+            if text[j:j + 3] == quote * 3:
+                return j + 3
+            j += 1
+        raise ConfigShape("a string that never ends")
+    j = i + 1
+    while j < len(text):
+        if quote == '"' and text[j] == "\\":
+            j += 2
+            continue
+        if text[j] == quote:
+            return j + 1
+        if text[j] == "\n":
+            break
+        j += 1
+    raise ConfigShape("a string that never ends")
+
+
+def string_value(text, start, end):
+    """The text of the string span `text[start:end]`. Basic-string escapes are
+    resolved, so `"\\ue711"` and the glyph itself compare equal."""
+    quote = text[start]
+    triple = text[start:start + 3] == quote * 3
+    body = text[start + 3:end - 3] if triple else text[start + 1:end - 1]
+    if quote == "'":
+        return body
+    out = []
+    i = 0
+    while i < len(body):
+        if body[i] != "\\":
+            out.append(body[i])
+            i += 1
+            continue
+        following = body[i + 1:i + 2]
+        if following in ("u", "U"):
+            width = 4 if following == "u" else 8
+            try:
+                out.append(chr(int(body[i + 2:i + 2 + width], 16)))
+            except ValueError:
+                raise ConfigShape("a string escape this patcher does not understand")
+            i += 2 + width
+        elif following in BASIC_ESCAPES:
+            out.append(BASIC_ESCAPES[following])
+            i += 2
+        else:
+            # A backslash before a newline folds the line away; nothing else is
+            # a valid escape, and neither carries a character.
+            i += 2
+    return "".join(out)
+
+
+def bracket_end(text, i):
+    """Index after the array or inline table that starts at `i`."""
+    closing = {"[": "]", "{": "}"}
+    stack = []
+    j = i
+    while j < len(text):
+        character = text[j]
+        if character in "\"'":
+            j = string_end(text, j)
+            continue
+        if character == "#":
+            while j < len(text) and text[j] != "\n":
+                j += 1
+            continue
+        if character in closing:
+            stack.append(closing[character])
+        elif stack and character == stack[-1]:
+            stack.pop()
+            if not stack:
+                return j + 1
+        j += 1
+    raise ConfigShape("an array or inline table that never ends")
+
+
+def value_end(text, i):
+    """Index after the value that starts at `i`. A number, a boolean or a date is
+    taken whole, without reading it."""
+    if text[i] in "\"'":
+        return string_end(text, i)
+    if text[i] in "[{":
+        return bracket_end(text, i)
+    j = i
+    while j < len(text) and text[j] not in ",]}\n#":
+        j += 1
+    while j > i and text[j - 1] in " \t":
+        j -= 1
+    if j == i:
+        raise ConfigShape("a value this patcher does not understand")
+    return j
+
+
+def read_key(text, i):
+    """(the parts of the key at `i`, the index after it). A dotted key gives one
+    part per segment, so `a.b = 1` reads the same as `b = 1` under `[a]`."""
+    parts = []
+    while True:
+        i = skip_spaces(text, i)
+        if i < len(text) and text[i] in "\"'":
+            end = string_end(text, i)
+            parts.append(string_value(text, i, end))
+            i = end
+        else:
+            start = i
+            while i < len(text) and (text[i].isalnum() or text[i] in "_-"):
+                i += 1
+            if i == start:
+                raise ConfigShape("a key this patcher does not understand")
+            parts.append(text[start:i])
+        after = skip_spaces(text, i)
+        if after < len(text) and text[after] == ".":
+            i = after + 1
+            continue
+        return parts, i
+
+
+def sidebar_rows(text):
+    """(start, end) of the value of every `rows` key under a `[ui.sidebar.*]`
+    table."""
+    spans = []
+    table = []
+    i = skip_gap(text, 0)
+    while i < len(text):
+        if text[i] == "[":
+            j = i + 1 + (1 if text[i + 1:i + 2] == "[" else 0)
+            parts, j = read_key(text, j)
+            j = skip_spaces(text, j)
+            while j < len(text) and text[j] == "]":
+                j += 1
+            table = parts
+            i = skip_gap(text, j)
+            continue
+        parts, j = read_key(text, i)
+        j = skip_spaces(text, j)
+        if text[j:j + 1] != "=":
+            raise ConfigShape("a key without a value")
+        j = skip_gap(text, j + 1)
+        end = value_end(text, j)
+        path = table + parts
+        if len(path) == 4 and path[0] == "ui" and path[1] == "sidebar" and path[3] == "rows":
+            spans.append((j, end))
+        i = skip_gap(text, end)
+    return spans
+
+
+def array_items(text, start, end):
+    """(start, end) of every element of the array `text[start:end]`."""
+    items = []
+    i = skip_gap(text, start + 1)
+    while i < end - 1 and text[i] != "]":
+        stop = value_end(text, i)
+        items.append((i, stop))
+        i = skip_gap(text, stop)
+        if i < end and text[i] == ",":
+            i = skip_gap(text, i + 1)
+    return items
+
+
+def table_keys(text, start, end):
+    """(key, key start, value start, value end) for every key of the inline table
+    `text[start:end]`, in the order they are written."""
+    entries = []
+    i = skip_gap(text, start + 1)
+    while i < end - 1 and text[i] != "}":
+        key_start = i
+        parts, j = read_key(text, i)
+        j = skip_spaces(text, j)
+        if text[j:j + 1] != "=":
+            raise ConfigShape("a key without a value")
+        j = skip_gap(text, j + 1)
+        stop = value_end(text, j)
+        entries.append((".".join(parts), key_start, j, stop))
+        i = skip_gap(text, stop)
+        if i < end and text[i] == ",":
+            i = skip_gap(text, i + 1)
+    return entries
+
+
+def token_occurrences(text, start, end, found):
+    """Append (element start, element end, inline-table keys) for every `$stack`
+    element of the array `text[start:end]`, nested arrays included. The keys are
+    None for a bare `"$stack"` string, which herdr accepts as a row element."""
+    for item_start, item_end in array_items(text, start, end):
+        head = text[item_start]
+        if head == "[":
+            token_occurrences(text, item_start, item_end, found)
+        elif head == "{":
+            entries = table_keys(text, item_start, item_end)
+            for key, _, value_start, value_stop in entries:
+                if key != "token" or text[value_start] not in "\"'":
+                    continue
+                if string_value(text, value_start, value_stop) == TOKEN:
+                    found.append((item_start, item_end, entries))
+                break
+        elif head in "\"'" and string_value(text, item_start, item_end) == TOKEN:
+            found.append((item_start, item_end, None))
+    return found
+
+
+def palette():
+    """(icon, colour, label) for every value the nerd set can put in the token."""
+    return [
+        ("".join(NERD[part] for part in key.split("+")), colour, label)
+        for key, colour, label in COLOURS
+    ]
+
+
+def escaped(icon):
+    """A glyph as TOML `\\uXXXX` escapes, so config.toml holds no private-use
+    character for an editor or a copy to lose."""
+    return "".join("\\u%04x" % ord(character) for character in icon)
+
+
+def rule_lines(indent):
+    """One `equals` rule per icon, one line each, comments in a column."""
+    rules = [
+        ('{ equals = "%s", fg = "%s" },' % (escaped(icon), colour), label)
+        for icon, colour, label in palette()
+    ]
+    if len(rules) > RULE_LIMIT:
+        raise ConfigShape("the palette holds more rules than herdr accepts")
+    width = max(len(rule) for rule, _ in rules)
+    return ["%s%s  # %s" % (indent, rule.ljust(width), label) for rule, label in rules]
+
+
+def line_indent(text, position):
+    """The indentation of the line `position` sits on."""
+    start = text.rfind("\n", 0, position) + 1
+    return text[start:skip_spaces(text, start)]
+
+
+def rewritten(text, occurrence, with_rules):
+    """The `$stack` element as it should read. `token` comes first, every other
+    key it carries is copied verbatim and keeps its order, and `rules` is written
+    last. A `fg`, `bold` or `dim` on the element styles every value that no rule
+    matches, so it stays."""
+    start, _, entries = occurrence
+    parts = ['token = "%s"' % TOKEN]
+    for key, key_start, _, value_stop in entries or []:
+        if key not in ("token", "rules"):
+            parts.append(text[key_start:value_stop].strip())
+    head = "{ " + ", ".join(parts)
+    if not with_rules:
+        return head + " }"
+    indent = line_indent(text, start)
+    return "%s, rules = [\n%s\n%s] }" % (head, "\n".join(rule_lines(indent + "  ")), indent)
+
+
+def written_by_us(text, start, end):
+    """True when the rules in `text[start:end]` are exactly the ones this plugin
+    writes. Only those are removed again; a hand-written set is somebody's work."""
+    if text[start] != "[":
+        return False
+    found = []
+    for item_start, item_stop in array_items(text, start, end):
+        if text[item_start] != "{":
+            return False
+        rule = {}
+        for key, _, value_start, value_stop in table_keys(text, item_start, item_stop):
+            if text[value_start] not in "\"'":
+                return False
+            rule[key] = string_value(text, value_start, value_stop)
+        if sorted(rule) != ["equals", "fg"]:
+            return False
+        found.append((rule["equals"], rule["fg"]))
+    return sorted(found) == sorted((icon, colour) for icon, colour, _ in palette())
+
+
+def patched(text, with_rules, path):
+    """(`text` with every `$stack` element brought into line, how many were
+    found). The rules are written when `with_rules` and removed when not, so
+    switching to emoji leaves the file as clean as it was."""
+    found = []
+    for start, end in sidebar_rows(text):
+        token_occurrences(text, start, end, found)
+    out = text
+    # Last element first: an edit then moves nothing that is still to be read.
+    for occurrence in sorted(found, key=lambda item: item[0], reverse=True):
+        start, end, entries = occurrence
+        rules = None
+        for key, _, value_start, value_stop in entries or []:
+            if key == "rules":
+                rules = (value_start, value_stop)
+        if not with_rules:
+            if rules is None:
+                continue
+            if not written_by_us(out, rules[0], rules[1]):
+                log("%s: keeping $stack rules this plugin did not write" % path)
+                continue
+        out = out[:start] + rewritten(out, occurrence, with_rules) + out[end:]
+    return out, len(found)
+
+
+def config_path():
+    """herdr's own config.toml: HERDR_CONFIG_PATH when it is set, else the default
+    location."""
+    return env("HERDR_CONFIG_PATH", os.path.join(env("HOME"), ".config/herdr/config.toml"))
+
+
+def colour_mode():
+    """`colours` in the plugin's config.toml: "auto" keeps the rules in step with
+    the icon set, "off" leaves herdr's config.toml untouched. An unknown name
+    keeps the default and is logged."""
+    name = setting("colours")
+    if not name:
+        return DEFAULT_COLOUR_MODE
+    if name not in COLOUR_MODES:
+        log(
+            'config.toml: colours = "%s" is not one of %s; using "%s"'
+            % (name, ", ".join(COLOUR_MODES), DEFAULT_COLOUR_MODE)
+        )
+        return DEFAULT_COLOUR_MODE
+    return name
+
+
+def keep_backup(text, path):
+    """The config as it was, copied into the plugin state directory. The name
+    carries the second it was taken, so no earlier copy is ever overwritten.
+    Returns the path, or an empty string when there is no copy: without one the
+    config is not touched at all."""
+    folder = state_dir()
+    backup = os.path.join(
+        folder, "config-%s-%d.toml" % (time.strftime("%Y%m%d-%H%M%S"), os.getpid())
+    )
+    try:
+        os.makedirs(folder, exist_ok=True)
+        with open(backup, "w", encoding="utf-8") as handle:
+            handle.write(text)
+    except OSError as error:
+        log("no backup of %s (%s); leaving it alone" % (path, error))
+        return ""
+    return backup
+
+
+def reload_config():
+    if not run_herdr(["server", "reload-config"], capture=False)[0]:
+        log("herdr server reload-config failed; reload it by hand")
+
+
+def swap(path, original, text, note):
+    """Put `text` in place of `path`, but only once `herdr config check` accepts
+    it. The temporary copy sits in the config's own folder, so the move into place
+    is atomic and cannot land on another filesystem."""
+    backup = keep_backup(original, path)
+    if not backup:
+        return False
+    temp = os.path.join(
+        os.path.dirname(path) or ".", ".%s.stack-icon.%d" % (basename(path), os.getpid())
+    )
+    try:
+        with open(temp, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        # The copy is what ends up in place, so it carries the original's mode:
+        # a config only its owner may read stays that way.
+        os.chmod(temp, os.stat(path).st_mode & 0o7777)
+        ok, out = run_herdr(["config", "check"], extra_env={"HERDR_CONFIG_PATH": temp})
+        if not ok:
+            log("herdr config check rejected the result; %s is unchanged" % path)
+            for line in out.strip().split("\n"):
+                if line:
+                    log("  " + line)
+            return False
+        os.replace(temp, path)
+    except OSError as error:
+        log("cannot write %s: %s" % (path, error))
+        return False
+    finally:
+        try:
+            os.remove(temp)
+        except OSError:
+            pass
+    log("%s in %s; the file as it was: %s" % (note, path, backup))
+    reload_config()
+    return True
+
+
+def ensure_colours():
+    """Bring the `$stack` colour rules in herdr's config.toml in step with the
+    icon set: one rule per nerd glyph, and none for emoji, which carry their own
+    colour. A config that holds no `$stack` token is left alone and logged — the
+    icon has not been placed in the sidebar yet. A run that changes nothing
+    writes nothing and says nothing."""
+    if colour_mode() == "off":
+        return True
+    path = config_path()
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            text = handle.read()
+    except OSError as error:
+        log("cannot read %s: %s" % (path, error))
+        return False
+    with_rules = set_name() == "nerd"
+    try:
+        new, found = patched(text, with_rules, path)
+    except ConfigShape as error:
+        log("%s: %s; leaving the file alone" % (path, error))
+        return False
+    if not found:
+        log(
+            'no $stack token in the sidebar rows of %s; add { token = "%s" } to a row of '
+            "[ui.sidebar.spaces] and of [ui.sidebar.agents] to see the icon" % (path, TOKEN)
+        )
+        return True
+    if new == text:
+        return True
+    note = "wrote the $stack colour rules" if with_rules else "removed the $stack colour rules"
+    return swap(path, text, new, note)
+
+
+# --------------------------------------------------------------------------
 # Reporting
 # --------------------------------------------------------------------------
 
@@ -732,6 +1234,11 @@ def watch():
     signal.signal(signal.SIGINT, stop)
     log("watching %s, pid %d" % (socket_path(), me))
 
+    # Once, before the first report: installing the plugin and restarting herdr
+    # is then the whole of the integration. A failure here leaves the icons
+    # uncoloured, which is no reason to stop reporting them.
+    ensure_colours()
+
     failures = 0
     while True:
         seed_all()
@@ -811,6 +1318,9 @@ def main(argv):
 
     if option == "--all":
         return 0 if seed_all() else 1
+
+    if option == "--colours":
+        return 0 if ensure_colours() else 1
 
     context = env("HERDR_PLUGIN_CONTEXT_JSON")
     workspace = env("HERDR_WORKSPACE_ID") or json_str(context, "workspace_id")

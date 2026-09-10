@@ -74,12 +74,20 @@ class WatchTest(unittest.TestCase):
         self.addCleanup(self.server.close)
 
         self.state = os.path.join(self.work, "state")
+        # The watcher writes the colour rules into herdr's config.toml before it
+        # reports anything, so this has to point at the test's own file. Without
+        # it the run would edit the config of whoever is running the tests.
+        self.herdr_config = support.write(
+            os.path.join(self.work, "herdr-config.toml"),
+            '[ui.sidebar.spaces]\nrows = [["state_icon", { token = "$stack" }]]\n',
+        )
         self.environment = dict(
             os.environ,
             HERDR_PLUGIN_CONFIG_DIR=self.config,
             HERDR_PLUGIN_STATE_DIR=self.state,
             HERDR_SOCKET_PATH=self.socket_path,
             HERDR_BIN_PATH=support.make_stub(self.work),
+            HERDR_CONFIG_PATH=self.herdr_config,
             CALLS=self.calls_file,
             PANES=panes,
             WORKSPACES=workspaces,
@@ -147,6 +155,28 @@ class WatchTest(unittest.TestCase):
         self.wait_for_call("workspace report-metadata w1 --source bonkey.stack-icon --token stack=🐹")
         # Events are handled in order, so the first one is done by now.
         self.assertEqual([line for line in support.calls(self.calls_file) if "w1:p1" in line], [])
+
+    def test_the_watcher_writes_the_colour_rules_before_it_reports(self):
+        """The startup hook is the whole integration: installing the plugin and
+        restarting herdr has to be enough to get coloured icons."""
+        support.choose_icons(self.config, "nerd")
+        self.start_watcher()
+        connection, _ = self.server.accept()
+        self.addCleanup(connection.close)
+        connection.settimeout(30)
+        connection.makefile("r", encoding="utf-8", errors="replace").readline()
+
+        deadline = time.time() + 20
+        text = ""
+        while time.time() < deadline:
+            with open(self.herdr_config, "r", encoding="utf-8") as handle:
+                text = handle.read()
+            if "rules = [" in text:
+                break
+            time.sleep(0.05)
+        self.assertIn(
+            'equals = "\\ue711"', text, "no rules in %s\nlog:\n%s" % (text, self.watch_log())
+        )
 
     def test_the_watcher_owns_a_pid_file_and_a_stamped_log(self):
         watcher = self.start_watcher()

@@ -1,6 +1,6 @@
 id = "bonkey.stack-icon"
 name = "Stack icon"
-version = "0.5.0"
+version = "0.6.0"
 min_herdr_version = "0.8.0"
 description = "Shows a technology icon next to each workspace, detected from the repository's files. Nerd Font glyphs by default, emoji (🍏 🤖 🦀 🐹 🟩 🐍) on request."
 platforms = ["macos", "linux"]
@@ -8,9 +8,12 @@ platforms = ["macos", "linux"]
 # Render it in config.toml by adding { token = "$stack" } to a row of both
 # [ui.sidebar.spaces] and [ui.sidebar.agents], for example:
 #   rows = [["state_icon", { token = "$stack" }, "workspace"], ...]
+# The colour rules that paint each glyph are written by the plugin itself; there
+# is nothing to copy.
 
-# The icon set is chosen in config.toml in the plugin config directory
-# (`herdr plugin config-dir bonkey.stack-icon`); see config.example.toml.
+# The icon set, and whether the colour rules are written at all, are chosen in
+# config.toml in the plugin config directory (`herdr plugin config-dir
+# bonkey.stack-icon`); see config.example.toml.
 
 # Commands run with the plugin root as cwd, so the script is addressed by name.
 
@@ -47,8 +50,9 @@ command = ["python3", "stack-icon.py"]
 
 # The token lives only in the running server, so this hook reports every
 # workspace when the server starts; a Space row would otherwise stay empty until
-# its workspace is focused. It then stays alive as a subscriber: herdr does not
-# dispatch pane.updated (emitted on every cd) to event hooks, so a pane that
+# its workspace is focused. It also writes the colour rules into config.toml
+# once, before the first report. It then stays alive as a subscriber: herdr does
+# not dispatch pane.updated (emitted on every cd) to event hooks, so a pane that
 # moves to another repository gets the right icon without a refocus.
 [[startup]]
 command = ["python3", "stack-icon.py", "--watch"]
@@ -61,3 +65,13 @@ title = "Refresh stack icon"
 description = "Re-detect the technology stack of this workspace's repository."
 contexts = ["workspace"]
 command = ["python3", "stack-icon.py"]
+
+# Write the colour rules into config.toml again, after changing the icon set or
+# editing them by hand. The startup hook does the same on every server start:
+#   herdr plugin action invoke bonkey.stack-icon.colours
+[[actions]]
+id = "colours"
+title = "Update stack icon colours"
+description = "Write the $stack colour rules into herdr's config.toml."
+contexts = ["workspace"]
+command = ["python3", "stack-icon.py", "--colours"]
