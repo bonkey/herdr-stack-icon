@@ -14,33 +14,33 @@ platforms = ["macos", "linux"]
 # New and reopened worktrees.
 [[events]]
 on = "worktree.created"
-command = ["bash", "stack-icon.sh"]
+command = ["python3", "stack-icon.py"]
 
 [[events]]
 on = "worktree.opened"
-command = ["bash", "stack-icon.sh"]
+command = ["python3", "stack-icon.py"]
 
 # Plain workspaces.
 [[events]]
 on = "workspace.created"
-command = ["bash", "stack-icon.sh"]
+command = ["python3", "stack-icon.py"]
 
 # Back-fills workspaces that existed before the plugin was installed.
 [[events]]
 on = "workspace.focused"
-command = ["bash", "stack-icon.sh"]
+command = ["python3", "stack-icon.py"]
 
 # Agent rows read pane metadata, not workspace metadata, so a pane opened later
 # gets its icon the first time it is focused.
 [[events]]
 on = "pane.focused"
-command = ["bash", "stack-icon.sh"]
+command = ["python3", "stack-icon.py"]
 
 # A new pane starts with its workspace's folder; give it the icon at once
 # instead of on its first focus.
 [[events]]
 on = "pane.created"
-command = ["bash", "stack-icon.sh"]
+command = ["python3", "stack-icon.py"]
 
 # The token lives only in the running server, so this hook reports every
 # workspace when the server starts; a Space row would otherwise stay empty until
@@ -48,7 +48,7 @@ command = ["bash", "stack-icon.sh"]
 # dispatch pane.updated (emitted on every cd) to event hooks, so a pane that
 # moves to another repository gets the right icon without a refocus.
 [[startup]]
-command = ["bash", "stack-icon.sh", "--watch"]
+command = ["python3", "stack-icon.py", "--watch"]
 
 # Manual re-scan of the focused workspace:
 #   herdr plugin action invoke bonkey.stack-icon.refresh
@@ -57,4 +57,4 @@ id = "refresh"
 title = "Refresh stack icon"
 description = "Re-detect the technology stack of this workspace's repository."
 contexts = ["workspace"]
-command = ["bash", "stack-icon.sh"]
+command = ["python3", "stack-icon.py"]
