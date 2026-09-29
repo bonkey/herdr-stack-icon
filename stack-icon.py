@@ -39,9 +39,10 @@
 #   pyproject.toml requirements.txt                   python           🐍
 #   nothing matched: the token is cleared, never a placeholder.
 #
-# The nerd column is the default. It names a Devicons glyph, so `apple` is
-# nf-dev-apple; NERD below holds the codepoints. `icons = "emoji"` in
-# config.toml in the plugin config dir picks the emoji column instead.
+# The nerd column is the default. It names a Nerd Fonts glyph, so `apple` is
+# nf-dev-apple and `go` is nf-seti-go; NERD below holds the codepoints.
+# `icons = "emoji"` in config.toml in the plugin config dir picks the emoji
+# column instead.
 #
 # A nerd glyph is monochrome, so the plugin also writes the `rules` that paint
 # each one into herdr's own config.toml; see "Colour rules" below. `colours =
@@ -89,14 +90,15 @@ MARKER_SUFFIXES = (".xcodeproj", ".xcworkspace")
 # The order the deciding tier is searched in.
 KINDS = ("ios", "android", "rust", "go", "node", "py")
 
-# Every glyph is a Devicon in the U+E700-U+E7C5 block, which Nerd Fonts v3 kept
-# where v2 had it, so the set renders the same in both. A terminal without a
-# Nerd Font shows a replacement box for each one.
+# Go is the filled Seti gopher at U+E627: nf-dev-go is an outline that thins to a
+# smudge at cell size. The others are Devicons in U+E700-U+E7C5. Nerd Fonts v3
+# kept both blocks where v2 had them, so the set renders the same in both. A
+# terminal without a Nerd Font shows a replacement box for each one.
 NERD = {
     "ios": "\ue711",  # nf-dev-apple
     "android": "\ue70e",  # nf-dev-android
     "rust": "\ue7a8",  # nf-dev-rust
-    "go": "\ue724",  # nf-dev-go
+    "go": "\ue627",  # nf-seti-go
     "node": "\ue718",  # nf-dev-nodejs_small
     "py": "\ue73c",  # nf-dev-python
 }

@@ -29,7 +29,7 @@ NERD = {
     "ios": "\ue711",  # nf-dev-apple
     "android": "\ue70e",  # nf-dev-android
     "rust": "\ue7a8",  # nf-dev-rust
-    "go": "\ue724",  # nf-dev-go
+    "go": "\ue627",  # nf-seti-go
     "node": "\ue718",  # nf-dev-nodejs_small
     "py": "\ue73c",  # nf-dev-python
 }

@@ -1,7 +1,7 @@
 # Copy to $(herdr plugin config-dir bonkey.stack-icon)/config.toml
 
 # Which icon set the token carries.
-#   "nerd"  ->         (default; needs a Nerd Font in the terminal)
+#   "nerd"  ->         (default; needs a Nerd Font in the terminal)
 #   "emoji" -> 🍏 🤖 🦀 🐹 🟩 🐍
 icons = "nerd"
 

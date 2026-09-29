@@ -4,7 +4,7 @@
 sidebar, detected from the repository's files. Display only — nothing is renamed.
 
      les-gardiens          sundae-android          shared-kmp
-     ripgrep               gcai-go                 sf-symbols-mcp          mobile-broom
+     ripgrep               gcai-go                 sf-symbols-mcp          mobile-broom
 
 Nerd Font glyphs are the default; [emoji](#icon-set) are one setting away, and
 [each technology gets its own colour](#colour) without anything to copy.
@@ -73,17 +73,19 @@ are the KMP case at any depth; otherwise the first match wins within the decidin
 | `*.xcodeproj`, `*.xcworkspace`, `Package.swift`, `Podfile` |  `U+E711` `nf-dev-apple` | 🍏 |
 | `settings.gradle[.kts]`, `build.gradle[.kts]` |  `U+E70E` `nf-dev-android` | 🤖 |
 | `Cargo.toml` |  `U+E7A8` `nf-dev-rust` | 🦀 |
-| `go.mod` |  `U+E724` `nf-dev-go` | 🐹 |
+| `go.mod` |  `U+E627` `nf-seti-go` | 🐹 |
 | `package.json` |  `U+E718` `nf-dev-nodejs_small` | 🟩 |
 | `pyproject.toml`, `requirements.txt` |  `U+E73C` `nf-dev-python` | 🐍 |
 | nothing | token cleared, no placeholder | token cleared, no placeholder |
 
 ## Icon set
 
-Nerd Font glyphs are the default. They are Devicons in the private use area, so the
-terminal needs a [Nerd Font](https://www.nerdfonts.com); with any other font every
-one of them is a replacement box (`▯`). All six sit in `U+E700`–`U+E7C5`, which Nerd
-Fonts v3 left where v2 had it, so a v2 font shows the same icons.
+Nerd Font glyphs are the default. They sit in the private use area, so the terminal
+needs a [Nerd Font](https://www.nerdfonts.com); with any other font every one of them
+is a replacement box (`▯`). Go is the filled Seti gopher `U+E627`: the Devicons gopher
+is an outline that thins to a smudge at cell size. The other five are Devicons in
+`U+E700`–`U+E7C5`. Nerd Fonts v3 left both blocks where v2 had them, so a v2 font shows
+the same icons.
 
 Emoji are the alternative. Pick the set in
 `$(herdr plugin config-dir bonkey.stack-icon)/config.toml`:
@@ -192,7 +194,7 @@ applies to the entry it is written on, so each panel needs its own copy:
         { equals = "\ue711", fg = "#7c7c82" },        # iOS/macOS
         { equals = "\ue70e", fg = "#0d9152" },        # Android
         { equals = "\ue7a8", fg = "#c2571a" },        # Rust
-        { equals = "\ue724", fg = "#0087a8" },        # Go
+        { equals = "\ue627", fg = "#0087a8" },        # Go
         { equals = "\ue718", fg = "#4c8f3a" },        # Node
         { equals = "\ue73c", fg = "#3d7fbf" },        # Python
       ] }, "workspace"],
@@ -206,7 +208,7 @@ applies to the entry it is written on, so each panel needs its own copy:
         { equals = "\ue711", fg = "#7c7c82" },        # iOS/macOS
         { equals = "\ue70e", fg = "#0d9152" },        # Android
         { equals = "\ue7a8", fg = "#c2571a" },        # Rust
-        { equals = "\ue724", fg = "#0087a8" },        # Go
+        { equals = "\ue627", fg = "#0087a8" },        # Go
         { equals = "\ue718", fg = "#4c8f3a" },        # Node
         { equals = "\ue73c", fg = "#3d7fbf" },        # Python
       ] }, "workspace", "tab"],
